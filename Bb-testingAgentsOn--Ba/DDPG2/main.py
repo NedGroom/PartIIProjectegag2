@@ -45,6 +45,7 @@ def train(num_episodes, agent, env,  evaluate, validate_every,
     
     while episode < num_episodes:
 
+       # print(env.load.time_step)
         assert(env.time_step == env.load.time_step%24)
 
         # agent pick action ...
@@ -308,10 +309,13 @@ def main(mode='', train_eps=0, bsize=64, epsilon=50000, validate_eps=20, validat
     args.warmup = warmup - 1
     num_sample_eps = 6
 
-    cfg = EnvConfig()
-    cfg.solar_scaling_factor = 5
- #   env = NormalizedEnv(gym.make(args.env))
-    env = wrapperPartial_newRewardNoHindsight(gym.make(args.env, cfg))
+    
+ #   cfg = EnvConfig()
+    cfg = { 'solar_scaling_factor' : 5 }
+    #env = NormalizedEnv(gym.make(args.env))
+    env = gym.make(args.env, cfg)
+    print(env.cfg.solar_scaling_factor)
+    env = wrapperPartial_newRewardNoHindsight(env)
     print(env.cfg.solar_scaling_factor)
 
     if args.seed > 0:
