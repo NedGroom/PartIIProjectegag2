@@ -62,7 +62,7 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
                 dtype=self.cfg.dtype,
             ),
             "battery_cont": gym.spaces.Box(
-                low=0, high=self.battery.size, shape=(1,), dtype=self.cfg.dtype
+                low=0, high=self.cfg.paper_battery_capacity, shape=(1,), dtype=self.cfg.dtype
             ),
             "time_until_departure": gym.spaces.Discrete(self.cfg.episode_len + 1),
           #  "time_step_cont": gym.spaces.Box(
@@ -70,10 +70,32 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
             
             }
 
+
+
         obs_spaces = [obs_spaces[key] for key in self.cfg.obs_keys]         # Selecting the subset of obs spaces selected
         self.observation_space = gym.spaces.Tuple(obs_spaces)
 
+        high = np.array(
+            [
+                self.load.max_value,
+                self.solar.max_value,
+                self.cfg.paper_battery_capacity,
+                self.cfg.episode_len + 1,
+            ],
+            dtype=np.float32,
+        )
 
+        low = np.array(
+            [
+                self.load.min_value,
+                self.solar.min_value,
+                0,
+                -1,
+            ],
+            dtype=np.float32,
+        )
+
+        self.observation_space = gym.spaces.Box(low, high, dtype=self.cfg.dtype)
 
         self.reset(seed=0)
 
@@ -435,7 +457,9 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
         """
  #       print("Tring to call key in obs keys")
  #       print(self.cfg.obs_keys)
-        return np.array([state[key] for key in self.cfg.obs_keys], dtype=np.float64)
+       # return np.array([state[key] for key in self.cfg.obs_keys], dtype=np.float64)
+        return np.array([float(state[key]) for key in self.cfg.obs_keys], dtype=np.float64)
+        
 
     def _get_time_of_day(self, step: int) -> np.array:
         
