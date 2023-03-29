@@ -16,6 +16,7 @@ import bauwerk
 #import SBHparametricWrapperforAgent1
 #from SBHparametricWrapperforAgent1 import ParametricActions
 from wrapperParaAgent_newRewardNoHindsight import wrapperPara_newRewardNoHindsight
+from bauwerk.envs.solar_battery_house import SolarBatteryHouseCoreEnv
 
 
 
@@ -70,7 +71,10 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
     assert not (save_frames and visualise)
     
     env_name = 'bauwerk/SolarBatteryHouse-v0'
-    env = gym.make(env_name)
+    cfg = { 'solar_scaling_factor' : loadscaling,
+          'load_scaling_factor' : loadscaling}
+   # env = gym.make(args.env, cfg)
+    env = SolarBatteryHouseCoreEnv(cfg)
     env = wrapperPara_newRewardNoHindsight(env)
     print("pre-Observation space: ")
     print(env.observation_space)
@@ -363,7 +367,7 @@ def plotsampleepisodeslong(data, path, loadscaling):
         zeroat = np.where(timesteps == 0)[0][0]
         add = 24*np.append(np.zeros(zeroat), np.ones(len(timesteps)-zeroat))
         timesteps = timesteps + add
-        axarr[axida, axidb].plot(timesteps, pvs)
+        axarr[axida, axidb].plot(timesteps, pvs / loadscaling)
         axarr[axida, axidb].plot(timesteps, loads / loadscaling)
         axarr[axida, axidb].plot(timesteps, socs)
         axarr[axida, axidb].plot(timesteps, costs / 1000)
@@ -375,7 +379,7 @@ def plotsampleepisodeslong(data, path, loadscaling):
             zeroat = np.where(indices == 0)[0][0]
             add = 24*np.append(np.zeros(zeroat), np.ones(len(indices)-zeroat))
             indices = indices + add
-        axarr2[axida, axidb].plot(indices, pvs)
+        axarr2[axida, axidb].plot(indices, pvs / loadscaling)
         axarr2[axida, axidb].plot(indices, loads / loadscaling)
         axarr2[axida, axidb].plot(indices, socs)
         axarr2[axida, axidb].plot(indices, costs / 1000)
@@ -446,5 +450,5 @@ def evaluate(env, agent, episodes=1000):
 
 
 if __name__ == '__main__':
-    run(episodes=2000, saveload='runPdqna',num_sample_eps=6, loadscaling=5, seed=1, measure_step=30)
-    run(episodes=2000, saveload='runPdqna',num_sample_eps=6, loadscaling=5, seed=2, measure_step=30)
+    run(episodes=2000, saveload='runPdqna250',num_sample_eps=6, loadscaling=250, seed=1, measure_step=30)
+    run(episodes=2000, saveload='runPdqna250',num_sample_eps=6, loadscaling=250, seed=2, measure_step=30)

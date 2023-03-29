@@ -40,7 +40,6 @@ class wrapperPara_newRewardNoHindsight(gym.Wrapper):
         self.cfg.paper_battery_capacity = 16000 #16kWH
         self.cfg.epsPV = 0.3
         self.cfg.epsSOC = 0.3
-        self.loadscaling = 5
         self.total_rewards = 0
         self.episode = 0
         self.my_pv_consumption = 0
@@ -150,8 +149,8 @@ class wrapperPara_newRewardNoHindsight(gym.Wrapper):
         cost = net_load * self.cfg.time_step_len * self.grid.base_price
 
         self.logger.debug("step - net load: %s", net_load)
-
-        assert (pv_generation - solar_used  >= -0.000005)
+     #   print((pv_generation - solar_used)[0])
+        assert ((pv_generation - solar_used)[0]  >= -0.000005 * self.cfg.solar_scaling_factor)
         cum_load += load
         cum_pv_gen += pv_generation
         cum_pv_used += solar_used
@@ -203,7 +202,7 @@ class wrapperPara_newRewardNoHindsight(gym.Wrapper):
         self.time_til_departure -=1
 
         # Get load and PV generation for next time step
-        new_load = self.loadscaling * self.load.get_next_load()
+        new_load = self.load.get_next_load()
         load_change = load - new_load
         load = new_load
 
@@ -383,7 +382,7 @@ class wrapperPara_newRewardNoHindsight(gym.Wrapper):
 
 
 
-        load = self.loadscaling * self.load.get_next_load()
+        load = self.load.get_next_load()
         pv_gen = self.solar.get_next_generation()
         self.solar.time_step -= 1
         self.load.time_step -= 1

@@ -9,7 +9,7 @@ import sys
 import os
 import math
 import bauwerk
-from bauwerk.envs.solar_battery_house import EnvConfig
+from bauwerk.envs.solar_battery_house import EnvConfig, SolarBatteryHouseCoreEnv
 
 from normalized_env import NormalizedEnv
 from evaluator import Evaluator
@@ -220,7 +220,7 @@ def plotsampleepisodeslong(data, path, loadscaling):
         zeroat = np.where(timesteps == 0)[0][0]
         add = 24*np.append(np.zeros(zeroat), np.ones(len(timesteps)-zeroat))
         timesteps = timesteps + add
-        axarr[axida, axidb].plot(timesteps, pvs)    # this will call an error if train eps too small, or validateevery too big
+        axarr[axida, axidb].plot(timesteps, pvs / loadscaling)    # this will call an error if train eps too small, or validateevery too big
         axarr[axida, axidb].plot(timesteps, loads / loadscaling)
         axarr[axida, axidb].plot(timesteps, socs)
         axarr[axida, axidb].plot(timesteps, costs / 1000)
@@ -232,7 +232,7 @@ def plotsampleepisodeslong(data, path, loadscaling):
             zeroat = np.where(indices == 0)[0][0]
             add = 24*np.append(np.zeros(zeroat), np.ones(len(indices)-zeroat))
             indices = indices + add
-        axarr2[axida, axidb].plot(indices, pvs)
+        axarr2[axida, axidb].plot(indices, pvs / loadscaling)
         axarr2[axida, axidb].plot(indices, loads / loadscaling)
         axarr2[axida, axidb].plot(indices, socs)
         axarr2[axida, axidb].plot(indices, costs / 1000)
@@ -250,6 +250,7 @@ def plotsampleepisodeslong(data, path, loadscaling):
     path = '{}/sample_episodes'.format(path)
     fig.savefig(path+'.png')
     figind.savefig(path+'indices.png')
+    print("saved episodes")
 
 def test(num_episodes, agent, env, evaluate, model_path, visualize=False, debug=False):
 
@@ -310,11 +311,12 @@ def main(mode='', train_eps=0, bsize=64, epsilon=50000, validate_eps=20, validat
     num_sample_eps = 6
 
     
- #   cfg = EnvConfig()
-    cfg = { 'solar_scaling_factor' : 5 }
     #env = NormalizedEnv(gym.make(args.env))
-    env = gym.make(args.env, cfg)
-    print(env.cfg.solar_scaling_factor)
+
+    cfg = { 'solar_scaling_factor' : loadscaling,
+          'load_scaling_factor' : loadscaling}
+   # env = gym.make(args.env, cfg)
+    env = SolarBatteryHouseCoreEnv(cfg)
     env = wrapperPartial_newRewardNoHindsight(env)
     print(env.cfg.solar_scaling_factor)
 

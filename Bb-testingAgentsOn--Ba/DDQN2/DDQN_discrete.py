@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 import math
 #from wrapperDiscrete_newRewardNoHindsight import wrapperDiscrete_newRewardNoHindsight
 from wrapperDiscretepg_newRewardNoHindsight import wrapperDiscrete_newRewardNoHindsight
+from bauwerk.envs.solar_battery_house import SolarBatteryHouseCoreEnv
+
 
 
 """
@@ -202,9 +204,12 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
     :param render_step: see above
     :return: the trained Q-Network and the measured performances
     """
-    env = gym.make(env_name)
+    #env = gym.make(env_name)
+    
+    cfg = { 'solar_scaling_factor' : loadscaling,
+          'load_scaling_factor' : loadscaling}
+    env = SolarBatteryHouseCoreEnv(cfg)
     env = wrapperDiscrete_newRewardNoHindsight(env)
-    loadscaling = env.loadscaling
     torch.manual_seed(seed)
     env.seed(seed)
 
@@ -227,6 +232,7 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
         Q_1 = QNetworkCNN(action_dim=env.action_space.n).to(device)
         Q_2 = QNetworkCNN(action_dim=env.action_space.n).to(device)
     else:
+        print((env.observation_space))
         print(len(env.observation_space))
         Q_1 = QNetwork(action_dim=21, state_dim=len(env.observation_space),
                                         hidden_dim=hidden_dim).to(device)
@@ -263,6 +269,7 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
         done = False
         i = 0
         while not done:
+            assert(env.time_step == env.load.time_step%24)
             i += 1
             old_state = state
             action = select_action(Q_2, env, state, eps)
@@ -359,7 +366,7 @@ def plotperformance(performance, dataslices, namecfg, fn, interval=None):
     yrewards = [np.mean(slice["rewards"]) for slice in dataslices]
     errorrewards = [np.std(slice["rewards"]) for slice in dataslices]    
 
-    maxcost = max( [max(slice["costs"]) for slice in dataslices] )
+    maxcost = max( [max(slice["costs"]) for slice in dataslices] + [1] )
     ycosts = [np.mean(slice["costs"]/maxcost) for slice in dataslices]
     errorcosts = [np.std(slice["costs"]/maxcost) for slice in dataslices]
 
@@ -406,42 +413,48 @@ def plotsampleepisodeslong(data, path, loadscaling):
 
     fig.figsize = (40, 4*math.ceil(numeps/3))
     figind.figsize = (40, 4*math.ceil(numeps/3))
-
+    print(numeps)
     for ep in range(numeps):
 
         timesteps, indices, pvs, loads, socs, costs, realactions = data[ep]
         
         axidb = math.floor(ep/3)
         axida = ep - 3 * axidb
-
+        print((axarr.shape))
+        print(axida)
+        print(axidb)
+        if axarr.shape == (3,):
+            plotindex = ep
+        else:
+            plotindex = (axida, axidb)
         zeroat = np.where(timesteps == 0)[0][0]
         add = 24*np.append(np.zeros(zeroat), np.ones(len(timesteps)-zeroat))
         timesteps = timesteps + add
-        axarr[axida, axidb].plot(timesteps, pvs)
-        axarr[axida, axidb].plot(timesteps, loads / loadscaling)
-        axarr[axida, axidb].plot(timesteps, socs)
-        axarr[axida, axidb].plot(timesteps, costs / 1000)
-        axarr[axida, axidb].plot(timesteps, realactions / 3500)
-        axarr[axida, axidb].axvspan(20, 31, alpha=0.25, color='grey')
+        axarr[plotindex].plot(timesteps, pvs / loadscaling)
+        axarr[plotindex].plot(timesteps, loads / loadscaling)
+        axarr[plotindex].plot(timesteps, socs)
+        axarr[plotindex].plot(timesteps, costs / 1000)
+        axarr[plotindex].plot(timesteps, realactions / 3500)
+        axarr[plotindex].axvspan(20, 31, alpha=0.25, color='grey')
 
         indices = indices % 24
         if 0 in indices:
             zeroat = np.where(indices == 0)[0][0]
             add = 24*np.append(np.zeros(zeroat), np.ones(len(indices)-zeroat))
             indices = indices + add
-        axarr2[axida, axidb].plot(indices, pvs)
-        axarr2[axida, axidb].plot(indices, loads / loadscaling)
-        axarr2[axida, axidb].plot(indices, socs)
-        axarr2[axida, axidb].plot(indices, costs / 1000)
-        axarr2[axida, axidb].plot(indices, realactions / 3500)
+        axarr2[plotindex].plot(indices, pvs / loadscaling)
+        axarr2[plotindex].plot(indices, loads / loadscaling)
+        axarr2[plotindex].plot(indices, socs)
+        axarr2[plotindex].plot(indices, costs / 1000)
+        axarr2[plotindex].plot(indices, realactions / 3500)
         
-        axarr2[axida, axidb].axvspan(20, 31, alpha=0.25, color='grey')        
-        if(8 in indices): axarr2[axida, axidb].axvspan(0, 7, alpha=0.25, color='grey')
-        if(43 in indices): axarr2[axida, axidb].axvspan(44, 48, alpha=0.25, color='grey')
+        axarr2[plotindex].axvspan(20, 31, alpha=0.25, color='grey')        
+        if(8 in indices): axarr2[plotindex].axvspan(0, 7, alpha=0.25, color='grey')
+        if(43 in indices): axarr2[plotindex].axvspan(44, 48, alpha=0.25, color='grey')
 
 
-    axarr[0, 0].legend(['pv','load','soc','cost/1000','real actions'])
-    axarr2[0, 0].legend(['pv','load','soc','cost/1000','real actions'])
+    axarr[plotindex].legend(['pv','load','soc','cost/1000','real actions'])
+    axarr2[plotindex].legend(['pv','load','soc','cost/1000','real actions'])
 
 
     if not os.path.exists(path):
@@ -451,7 +464,7 @@ def plotsampleepisodeslong(data, path, loadscaling):
     figind.savefig(path+'indices.png')
 
 if __name__ == '__main__':
-    main(num_sample_eps=6, measure_step=100, num_episodes=2000, saveload='runddqna', seed=1, update_step=50)
-    main(num_sample_eps=6, measure_step=100, num_episodes=2000, saveload='runddqna', seed=2, update_step=50)
+    #main(num_sample_eps=6, measure_step=100, num_episodes=2000, saveload='runddqna', seed=1, update_step=50)
   #  main(num_sample_eps=6, measure_step=30, num_episodes=600, saveload='runddqna', seed=3)
   #  main(num_sample_eps=6, measure_step=30, num_episodes=600, saveload='runddqna', seed=4)
+    print(device)
