@@ -153,8 +153,8 @@ def evaluate(Qmodel, env, repeats):
         state = env.reset()
     #    print(state)
         for i in state: print(i)
-        state = [i[0] for i in state]
-        state = np.array(state, dtype=np.float32, copy=False)
+    #    state = [i[0] for i in state]
+    #    state = np.array(state, dtype=np.float32, copy=False)
     #    print("state: ")
     #    print(state)
         done = False
@@ -164,8 +164,8 @@ def evaluate(Qmodel, env, repeats):
                 values = Qmodel(state)
             action = np.argmax(values.cpu().numpy())
             state, reward, done,truncated, _ = env.step(action)
-            state = [i[0] for i in state]
-            state = np.array(state, dtype=np.float32, copy=False)
+   #         state = [i[0] for i in state]
+   #         state = np.array(state, dtype=np.float32, copy=False)
             perform += reward
     Qmodel.train()
     return perform/repeats
@@ -233,10 +233,10 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
         Q_2 = QNetworkCNN(action_dim=env.action_space.n).to(device)
     else:
         print((env.observation_space))
-        print(len(env.observation_space))
-        Q_1 = QNetwork(action_dim=21, state_dim=len(env.observation_space),
+ #       print(len(env.observation_space))
+        Q_1 = QNetwork(action_dim=21, state_dim=env.observation_space.shape[0],
                                         hidden_dim=hidden_dim).to(device)
-        Q_2 = QNetwork(action_dim=21, state_dim=len(env.observation_space),
+        Q_2 = QNetwork(action_dim=21, state_dim=env.observation_space.shape[0],
                                         hidden_dim=hidden_dim).to(device)
     # transfer parameters from Q_1 to Q_2
     update_parameters(Q_1, Q_2)
@@ -262,8 +262,8 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
             
 
         state = env.reset()
-        state = [i[0] for i in state]
-        state = np.array(state, dtype=np.float32, copy=False)
+  #      state = [i[0] for i in state]
+  #      state = np.array(state, dtype=np.float32, copy=False)
         memory.state.append(state)
 
         done = False
@@ -274,8 +274,8 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
             old_state = state
             action = select_action(Q_2, env, state, eps)
             state, reward, done,truncated, info = env.step(action)
-            state = [i[0] for i in state]
-            state = np.array(state, dtype=np.float32, copy=False)
+       #     state = [i[0] for i in state]
+       #     state = np.array(state, dtype=np.float32, copy=False)
 
 
             if episode % measure_step == 0 and countsampleepisodes < numsampleepisodes:
