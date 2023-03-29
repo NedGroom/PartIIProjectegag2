@@ -130,7 +130,7 @@ def train(batch_size, current, target, optim, memory, gamma):
    # print("hi")
 
     q_value = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)
-    next_q_value = next_q_state_values.gather(1, torch.max(next_q_values, 1)[1].unsqueeze(1))#.squeeze(1)
+    next_q_value = next_q_state_values.gather(1, torch.max(next_q_values, 1)[1].unsqueeze(1)).squeeze(1)
    # print(rewards.shape)
    # print(next_q_value.shape)
     expected_q_value = rewards + gamma * next_q_value * (1 - is_done)
@@ -296,7 +296,7 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
        #         env.render()
 
             # save state, action, reward sequence
-            memory.update(old_state, action, state, reward)
+            memory.update(state, action, reward, done)
 
         # just done
         pv_consums.append(info["my_pv_consumption"] / 100) # for percent
