@@ -140,7 +140,7 @@ class wrapperPartial_newRewardNoHindsight(gym.Wrapper):
 
         self.logger.debug("step - net load: %s", net_load)
 
-        assert (pv_generation - solar_used  >= -0.000005)
+        assert (pv_generation - solar_used  >= -0.000005 * self.cfg.solar_scaling_factor)
         cum_load += load
         cum_pv_gen += pv_generation
         cum_pv_used += solar_used
