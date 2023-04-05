@@ -427,6 +427,7 @@ def plotsampleepisodeslong(data, path, loadscaling):
             plotindex = ep
         else:
             plotindex = (axida, axidb)
+
         zeroat = np.where(timesteps == 0)[0][0]
         add = 24*np.append(np.zeros(zeroat), np.ones(len(timesteps)-zeroat))
         timesteps = timesteps + add

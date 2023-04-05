@@ -134,7 +134,7 @@ def train(num_episodes, agent, env,  evaluate, validate_every,
         os.makedirs(path)
     plotsampleepisodeslong(sampleepisodes, path, loadscaling)
     save_results_with_data(testrewards, dataslices, namecfg, '{}/validate_slices_inside'.format(path), interval=validate_every)
-    evaluate.save_results()
+ #   evaluate.save_results()
 
 def save_results_with_data(testrewards, dataslices, namecfg, fn, interval=None):
         output, bsize, epsilon, seed = namecfg    
