@@ -153,7 +153,7 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
         ## See if terminated, and calculate reward
         terminated = bool(self.time_til_departure == 1)
         if (terminated):
-           # reward = self.process_completed_episode()
+
             self.episode += 1
             self.total_cost = cum_cost
             
@@ -221,8 +221,6 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
 
 
         observation = self._get_obs_from_state(self.state)
-
-        #terminated = bool(self.time_step >= self.cfg.episode_len)
         
 
         info["net_load"] = net_load

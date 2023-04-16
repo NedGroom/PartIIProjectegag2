@@ -21,7 +21,7 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
     GRID = 0        # action ID
     PV = 1          # action ID
 
-    def __init__(self, env):
+    def __init__(self, env, tolerance=0.3):
 
         super().__init__(env)
 
@@ -38,8 +38,8 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
         self.cfg.grid_selling_allowed = False
         self.cfg.paper_max_charge_power = 3700
         self.cfg.paper_battery_capacity = 16000 #16kWH
-        self.cfg.epsPV = 0.3
-        self.cfg.epsSOC = 0.3
+        self.cfg.epsPV = tolerance
+        self.cfg.epsSOC = tolerance
         self.total_rewards = 0
         self.episode = 0
         self.my_pv_consumption = 0
@@ -48,32 +48,6 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
         
         self.action_space = Discrete(21)
 
-        obs_spaces = {
-            "load": gym.spaces.Box(
-                low=self.load.min_value,
-                high=self.load.max_value,
-                shape=(1,),
-                dtype=self.cfg.dtype,
-            ),
-            "pv_gen": gym.spaces.Box(
-                low=self.solar.min_value,
-                high=self.solar.max_value,
-                shape=(1,),
-                dtype=self.cfg.dtype,
-            ),
-            "battery_cont": gym.spaces.Box(
-                low=0, high=self.cfg.paper_battery_capacity, shape=(1,), dtype=self.cfg.dtype
-            ),
-            "time_until_departure": gym.spaces.Discrete(self.cfg.episode_len + 1),
-          #  "time_step_cont": gym.spaces.Box(
-          #      low=0, high=self.cfg.episode_len + 1, shape=(1,), dtype=self.cfg.dtype )
-            
-            }
-
-
-
-        obs_spaces = [obs_spaces[key] for key in self.cfg.obs_keys]         # Selecting the subset of obs spaces selected
-        self.observation_space = gym.spaces.Tuple(obs_spaces)
 
         high = np.array(
             [
@@ -134,7 +108,6 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
         attempted_action = copy.copy(action)
 
         
-        #charging_power = self.battery.charge(power=action)
         load_overflow_from_solar = max(0, load - pv_generation)
         solar_load_usage = min(pv_generation, load)
         solar_leftover = max(0, pv_generation - load)
@@ -143,11 +116,6 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
             solar_used = solar_load_usage
             net_load = realcharge_action + load_overflow_from_solar # EV charged on grid, load tries to do PV first
         else: # solar charge
-            #these lines are if solar charge takes priority, but load does
-           # realcharge_action = min(attempted_action, pv_generation) # EV charged on solar
-           # solar_leftover = pv_generation - realcharge_action
-           # solar_used = min(pv_generation, realcharge_action + load)
-           # net_load = max(0, load - solar_leftover) # load is in grid, whichever couldnt fit in leftover solar
             solar_attempted_action = min(solar_leftover, attempted_action)
             realcharge_action = min(solar_attempted_action, self.cfg.paper_battery_capacity - self.battery.b)
             solar_used = solar_load_usage + realcharge_action
@@ -158,7 +126,6 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
         assert self.battery.b <= self.cfg.paper_battery_capacity
         assert not (net_load < 0)
         # Draw remaining net load from grid and get price paid
-        #cost = self.grid.draw_power(power=net_load)
         cost = net_load * self.cfg.time_step_len * self.grid.base_price
 
         self.logger.debug("step - net load: %s", net_load)
@@ -167,28 +134,29 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
         cum_load += load
         cum_pv_gen += pv_generation
         cum_pv_used += solar_used
-        cum_EVmaxPV += solar_leftover
+        cum_EVmaxPV = min(cum_EVmaxPV + solar_leftover, self.cfg.paper_battery_capacity - self.SoC_on_arrival) # total amount car could have been charged with solar
         cum_LmaxPV += solar_load_usage
         cum_cost += cost
 
+        self.my_pv_consumption = cum_pv_used / cum_pv_gen
+        self.max_pv_consumption = (cum_LmaxPV + cum_EVmaxPV) / cum_pv_gen
+        enough_pv_consumption = bool(self.max_pv_consumption - self.my_pv_consumption <= self.cfg.epsPV)
+        enough_SOC = bool(1 - self.battery.b/self.cfg.paper_battery_capacity <= self.cfg.epsSOC)
 
         ## See if terminated, and calculate reward
         terminated = bool(self.time_til_departure == 1)
         if (terminated):
-           # reward = self.process_completed_episode()
+            
             self.episode += 1
-            self.my_pv_consumption = 100 * cum_pv_used / cum_pv_gen
-            cum_EVmaxPV = min(cum_EVmaxPV, self.cfg.paper_battery_capacity - self.SoC_on_arrival)
-            self.max_pv_consumption = 100 * (cum_LmaxPV + cum_EVmaxPV) / cum_pv_gen
             self.total_cost = cum_cost
-            enough_pv_consumption = bool(self.max_pv_consumption - self.my_pv_consumption <= self.cfg.epsPV * 100)
-            enough_SOC = bool(1 - self.battery.b/self.cfg.paper_battery_capacity <= self.cfg.epsSOC)
+            
             if enough_pv_consumption and enough_SOC:
                 reward = 1
                 self.total_rewards += 1
             else: 
                 reward = 0
-            report = [ "Day: " + str(self.save_data_timestep_on_reset//24) + ".." + str(self.episode),
+
+            report = [ "Day: "  + str(self.episode),
                 "Data left off: "+str(self.save_data_timestep_on_reset) + ". Data new start: " + str(self.new_start) + "." ,
                 "Car came home yesterday " + str(self.ep_start) + " , left " + str(self.ep_end) + " today, ep length: " + str(24-self.ep_start+self.ep_end),
                 "Max consumption: " + str(self.max_pv_consumption) + ", PV consumption: " + str(self.my_pv_consumption) + " %. Capacity: " + str(self.battery.b/self.cfg.paper_battery_capacity) + ". Total cost: " + str(self.total_cost),
@@ -229,7 +197,7 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
         self.state = { 
             "load": np.array([load], dtype=self.cfg.dtype),
             "pv_gen": np.array([pv_generation], dtype=self.cfg.dtype),
-            "battery_cont": np.array(self.battery.b, dtype=self.cfg.dtype),
+            "battery_cont": np.array(self.battery.b, dtype=self.cfg.dtype), # kept large for state
             "time_step": int(self.time_step),
             "time_step_cont": self.time_step.astype(self.cfg.dtype),
             "cum_load": cum_load,
@@ -247,8 +215,6 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
 
 
         observation = self._get_obs_from_state(self.state)
-
-        #terminated = bool(self.time_step >= self.cfg.episode_len)
         
 
         info["net_load"] = net_load
@@ -256,7 +222,7 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
         info["load"] = self.state["load"]
         info["pv_gen"] = self.state["pv_gen"]
         info["cost"] = cost
-        info["battery_cont"] = self.battery.b/self.cfg.paper_battery_capacity
+        info["battery_cont"] = self.battery.b/self.cfg.paper_battery_capacity # made relative for info
         info["time_step"] = int(self.time_step)
         info["my_pv_consumption"] = self.my_pv_consumption
         info["max_pv_consumption"] = self.max_pv_consumption
@@ -282,28 +248,6 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
 
         return observation, float(reward), terminated, truncated, info
 
-    def process_completed_episode(self): 
-        my_pv_consumption = 100 * self.state["cum_pv_used"] / self.state["cum_pv_gen"]
-        cum_EVmaxPV = min(self.state["cum_EVmaxPV"], self.cfg.paper_battery_capacity - self.SoC_on_arrival)
-        max_pv_consumption = 100 * (self.state["cum_LmaxPV"] + cum_EVmaxPV) / self.state["cum_pv_gen"]
-        total_cost = self.state["cum_cost"]
-
-        enough_pv_consumption = bool(max_pv_consumption - my_pv_consumption <= self.cfg.epsPV * 100)
-        enough_SOC = bool(1 - self.battery.b/self.cfg.paper_battery_capacity <= self.cfg.epsSOC)
-        if enough_pv_consumption and enough_SOC:
-            reward = 1
-            self.total_rewards += 1
-        else:
-            reward = 0
-            
-        report = [ "Day: " + str(self.save_data_timestep_on_reset//24) + ".." + str(self.episode),
-                "Data left off: "+str(self.save_data_timestep_on_reset) + ". Data new start: " + str(self.new_start) + "." ,
-                "Car came home yesterday " + str(self.ep_start) + " , left " + str(self.ep_end) + " today, ep length: " + str(24-self.ep_start+self.ep_end),
-                "Max consumption: " + str(max_pv_consumption) + ", PV consumption: " + str(my_pv_consumption) + " %. Capacity: " + str(self.battery.b/self.cfg.paper_battery_capacity) + ". Total cost: " + str(total_cost),
-                "Reward: " + str(reward)
-            ]
-        print(report)
-        return reward
 
     def reset(        
         self,

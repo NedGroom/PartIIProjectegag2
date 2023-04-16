@@ -11,7 +11,6 @@ import collections
 from torch.optim.lr_scheduler import StepLR
 import matplotlib.pyplot as plt
 import math
-#from wrapperDiscrete_newRewardNoHindsight import wrapperDiscrete_newRewardNoHindsight
 from wrapperDiscretepg_newRewardNoHindsight import wrapperDiscrete_newRewardNoHindsight
 from bauwerk.envs.solar_battery_house import SolarBatteryHouseCoreEnv
 
@@ -154,12 +153,6 @@ def evaluate(Qmodel, env, repeats, desiredgoal):
         state = env.reset()
         state = np.append(state, desiredgoal)
 
-    #    print(state)
-   #     for i in state: print(i)
-    #    state = [i[0] for i in state]
-    #    state = np.array(state, dtype=np.float32, copy=False)
-    #    print("state: ")
-    #    print(state)
         done = False
         while not done:
             state = torch.Tensor(state).to(device)
@@ -410,12 +403,7 @@ def plotperformance(performance, dataslices, namecfg, fn, interval=None):
     plt.ylabel('Average Reward')
     plt.title('epsilon: {}, batch size: {}, seed: {}'.format(epsilon, bsize, seed))
     ax.errorbar(x, yrew, fmt='-ko')
-  #  ax.plot(x, yrew, '-ko')
-  #  ax.errorbar(xless, yrewards, yerr=errorrewards, fmt='-ro')
-  #  ax.errorbar(xless, ycosts, yerr=errorcosts, fmt='-go')
-  #  ax.errorbar(xless, ysocs, yerr=errorsocs, fmt='-bo')
-  #  ax.errorbar(xless, yconsums, yerr=errorconsum, fmt='-co')
- #   ax.errorbar(xless, ymaxpvs, yerr=errormaxpv, fmt='c.')
+
 
     ax.errorbar(xless, yrewards, fmt='-ro')
     ax.errorbar(xless, ycosts,  fmt='-go')
@@ -493,7 +481,5 @@ def plotsampleepisodeslong(data, path, loadscaling):
     figind.savefig(path+'indices.png')
 
 if __name__ == '__main__':
-    #main(num_sample_eps=6, measure_step=100, num_episodes=2000, saveload='runddqna', seed=1, update_step=50)
-  #  main(num_sample_eps=6, measure_step=30, num_episodes=600, saveload='runddqna', seed=3)
-  #  main(num_sample_eps=6, measure_step=30, num_episodes=600, saveload='runddqna', seed=4)
+
     print(device)

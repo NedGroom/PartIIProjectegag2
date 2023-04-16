@@ -11,7 +11,6 @@ import collections
 from torch.optim.lr_scheduler import StepLR
 import matplotlib.pyplot as plt
 import math
-#from wrapperDiscrete_newRewardNoHindsight import wrapperDiscrete_newRewardNoHindsight
 from wrapperDiscretepg_newRewardNoHindsight import wrapperDiscrete_newRewardNoHindsight
 from bauwerk.envs.solar_battery_house import SolarBatteryHouseCoreEnv
 
@@ -124,15 +123,13 @@ def train(batch_size, current, target, optim, memory, gamma):
     states, actions, next_states, rewards, is_done = memory.sample(batch_size)
 
     q_values = current(states)
+    q_value = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)
 
     next_q_values = current(next_states)
     next_q_state_values = target(next_states)
-   # print("hi")
-
-    q_value = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)
+  
     next_q_value = next_q_state_values.gather(1, torch.max(next_q_values, 1)[1].unsqueeze(1)).squeeze(1)
-   # print(rewards.shape)
-   # print(next_q_value.shape)
+   
     expected_q_value = rewards + gamma * next_q_value * (1 - is_done)
 
     loss = (q_value - expected_q_value.detach()).pow(2).mean()
@@ -151,12 +148,7 @@ def evaluate(Qmodel, env, repeats):
     perform = 0
     for _ in range(repeats):
         state = env.reset()
-    #    print(state)
-        for i in state: print(i)
-    #    state = [i[0] for i in state]
-    #    state = np.array(state, dtype=np.float32, copy=False)
-    #    print("state: ")
-    #    print(state)
+
         done = False
         while not done:
             state = torch.Tensor(state).to(device)
@@ -164,8 +156,7 @@ def evaluate(Qmodel, env, repeats):
                 values = Qmodel(state)
             action = np.argmax(values.cpu().numpy())
             state, reward, done,truncated, _ = env.step(action)
-   #         state = [i[0] for i in state]
-   #         state = np.array(state, dtype=np.float32, copy=False)
+
             perform += reward
     Qmodel.train()
     return perform/repeats
@@ -228,16 +219,13 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
     countsampleepisodes = 0
     numsampleepisodes = num_sample_eps
 
-    if cnn:
-        Q_1 = QNetworkCNN(action_dim=env.action_space.n).to(device)
-        Q_2 = QNetworkCNN(action_dim=env.action_space.n).to(device)
-    else:
-        print((env.observation_space))
- #       print(len(env.observation_space))
-        Q_1 = QNetwork(action_dim=21, state_dim=env.observation_space.shape[0],
-                                        hidden_dim=hidden_dim).to(device)
-        Q_2 = QNetwork(action_dim=21, state_dim=env.observation_space.shape[0],
-                                        hidden_dim=hidden_dim).to(device)
+    
+    print((env.observation_space))
+
+    Q_1 = QNetwork(action_dim=21, state_dim=env.observation_space.shape[0],
+                                    hidden_dim=hidden_dim).to(device)
+    Q_2 = QNetwork(action_dim=21, state_dim=env.observation_space.shape[0],
+                                    hidden_dim=hidden_dim).to(device)
     # transfer parameters from Q_1 to Q_2
     update_parameters(Q_1, Q_2)
 
@@ -262,21 +250,17 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
             
 
         state = env.reset()
-  #      state = [i[0] for i in state]
-  #      state = np.array(state, dtype=np.float32, copy=False)
+
         memory.state.append(state)
 
         done = False
         i = 0
-        while not done:
+        while not done and i < horizon:
             assert(env.time_step == env.load.time_step%24)
             i += 1
             old_state = state
             action = select_action(Q_2, env, state, eps)
             state, reward, done,truncated, info = env.step(action)
-       #     state = [i[0] for i in state]
-       #     state = np.array(state, dtype=np.float32, copy=False)
-
 
             if episode % measure_step == 0 and countsampleepisodes < numsampleepisodes:
                 eptimes = np.append(eptimes,info["time_step"])
@@ -286,21 +270,14 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
                 epsocs = np.append(epsocs,info["battery_cont"])
                 epcosts = np.append(epcosts,info["cum_cost"])
                 epactions = np.append(epactions, info["realcharge_action"])
-                
-
-            if i > horizon:
-                done = True
-
-            # render the environment if render == True
-       #     if render and episode % render_step == 0:
-       #         env.render()
 
             # save state, action, reward sequence
             memory.update(state, action, reward, done)
 
+        done = True
         # just done
-        pv_consums.append(info["my_pv_consumption"] / 100) # for percent
-        maxpvs.append(info["max_pv_consumption"] / 100) # for percent
+        pv_consums.append(info["my_pv_consumption"] ) # for percent
+        maxpvs.append(info["max_pv_consumption"] ) # for percent
         socs.append(info["battery_cont"])
         rewards.append(reward)
         totalcosts.append(info["total_cost"] / 1000)
@@ -320,15 +297,15 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
                 pv_consums, maxpvs, socs, rewards, dataslice = [], [], [], [], {}
 
         if episode >= min_episodes and episode % update_step == 0:
-            for _ in range(update_repeats):
-                train(batch_size, Q_1, Q_2, optimizer, memory, gamma)
+
+            train(batch_size, Q_1, Q_2, optimizer, memory, gamma)
 
             # transfer new parameter from Q_1 to Q_2
             update_parameters(Q_1, Q_2)
 
-        # update learning rate and eps
-        scheduler.step()
-        eps = max(eps*eps_decay, eps_min)
+            # update learning rate and eps
+            scheduler.step()
+            eps = max(eps*eps_decay, eps_min)
 
 
     
@@ -339,7 +316,7 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
     namecfg = (output, batch_size, lr, seed)
     path = '{}/bs{}lr{}seed{}'.format(*namecfg)
     plotsampleepisodeslong(sampleepisodes, path, loadscaling)
-    plotperformance(performance, dataslices, namecfg, '{}/validate_slices_inside'.format(path), interval=measure_step)
+    plotperformance(performance, dataslices, namecfg, '{}validate_slices_inside'.format(path), interval=measure_step)
 
     return Q_1, performance
 
@@ -382,12 +359,7 @@ def plotperformance(performance, dataslices, namecfg, fn, interval=None):
     plt.ylabel('Average Reward')
     plt.title('epsilon: {}, batch size: {}, seed: {}'.format(epsilon, bsize, seed))
     ax.errorbar(x, yrew, fmt='-ko')
-  #  ax.plot(x, yrew, '-ko')
-  #  ax.errorbar(xless, yrewards, yerr=errorrewards, fmt='-ro')
-  #  ax.errorbar(xless, ycosts, yerr=errorcosts, fmt='-go')
-  #  ax.errorbar(xless, ysocs, yerr=errorsocs, fmt='-bo')
-  #  ax.errorbar(xless, yconsums, yerr=errorconsum, fmt='-co')
- #   ax.errorbar(xless, ymaxpvs, yerr=errormaxpv, fmt='c.')
+
 
     ax.errorbar(xless, yrewards, fmt='-ro')
     ax.errorbar(xless, ycosts,  fmt='-go')
@@ -460,12 +432,10 @@ def plotsampleepisodeslong(data, path, loadscaling):
 
     if not os.path.exists(path):
         os.makedirs(path)
-    path = '{}/sample_episodes'.format(path)
+    path = '{}sample_episodes'.format(path)
     fig.savefig(path+'.png')
     figind.savefig(path+'indices.png')
 
 if __name__ == '__main__':
-    #main(num_sample_eps=6, measure_step=100, num_episodes=2000, saveload='runddqna', seed=1, update_step=50)
-  #  main(num_sample_eps=6, measure_step=30, num_episodes=600, saveload='runddqna', seed=3)
-  #  main(num_sample_eps=6, measure_step=30, num_episodes=600, saveload='runddqna', seed=4)
+
     print(device)
