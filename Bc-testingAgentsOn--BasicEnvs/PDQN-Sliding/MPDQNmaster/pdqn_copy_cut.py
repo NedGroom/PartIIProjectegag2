@@ -16,8 +16,8 @@ import gym_platform
 
 #import SBHparametricWrapperforAgent1
 #from SBHparametricWrapperforAgent1 import ParametricActions
-from wrapperParaAgent_newRewardNoHindsight import wrapperPara_newRewardNoHindsight
-from bauwerk.envs.solar_battery_house import SolarBatteryHouseCoreEnv
+#from wrapperParaAgent_newRewardNoHindsight import wrapperPara_newRewardNoHindsight
+#from bauwerk.envs.solar_battery_house import SolarBatteryHouseCoreEnv
 from gym_hybrid.environments import SlidingEnv
 
 
@@ -29,7 +29,7 @@ import numpy as np
 from agents.pdqn import PDQNAgent
 from common.wrappers import ScaledStateWrapper, ScaledParameterisedActionWrapper
 from common.platform_domain import PlatformFlattenedActionWrapper
-from agents.pdqn_multipass import MultiPassPDQNAgent
+#from agents.pdqn_multipass import MultiPassPDQNAgent
 
 
 

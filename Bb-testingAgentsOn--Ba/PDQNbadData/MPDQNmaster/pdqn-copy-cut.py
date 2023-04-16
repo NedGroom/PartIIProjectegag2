@@ -24,7 +24,7 @@ import numpy as np
 from agents.pdqn import PDQNAgent
 from common.wrappers import ScaledStateWrapper, ScaledParameterisedActionWrapper
 
-from agents.pdqn_multipass import MultiPassPDQNAgent
+#from agents.pdqn_multipass import MultiPassPDQNAgent
 
 
 
