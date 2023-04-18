@@ -15,11 +15,10 @@ from bauwerk.envs.solar_battery_house import EnvConfig
 
 
 
-class newBaseEnvWrapper(gym.Wrapper):
+class NewBaseEnvWrapper(gym.Wrapper):
 
     pmax = 3700     # pmax = 1, for relative power action type
-    GRID = 0        # action ID
-    PV = 1          # action ID
+
 
     def __init__(self, env, tolerance=0.3):
 
@@ -138,8 +137,9 @@ class newBaseEnvWrapper(gym.Wrapper):
         cum_LmaxPV += solar_load_usage
         cum_cost += cost
 
-        self.my_pv_consumption = cum_pv_used / cum_pv_gen
-        self.max_pv_consumption = (cum_LmaxPV + cum_EVmaxPV) / cum_pv_gen
+        if cum_pv_gen: 
+            self.my_pv_consumption = cum_pv_used / cum_pv_gen
+            self.max_pv_consumption = (cum_LmaxPV + cum_EVmaxPV) / cum_pv_gen
         enough_pv_consumption = bool(self.max_pv_consumption - self.my_pv_consumption <= self.cfg.epsPV)
         enough_SOC = bool(1 - self.battery.b/self.cfg.paper_battery_capacity <= self.cfg.epsSOC)
 
