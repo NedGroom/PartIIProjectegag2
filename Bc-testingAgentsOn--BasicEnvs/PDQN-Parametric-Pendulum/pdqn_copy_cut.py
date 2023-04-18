@@ -9,21 +9,11 @@ import matplotlib.pyplot as plt
 import math
 import gym
 from gym.spaces import Tuple, Box, Discrete
-import bauwerk
-import gym_platform
-#from gym.wrappers import Monitor
 
 
 import numpy as np
-
 from agents.pdqn import PDQNAgent
 from common.wrappers import ScaledStateWrapper, ScaledParameterisedActionWrapper
-
-
-
-
-import click
-import ast
 
 import click
 import ast
@@ -38,26 +28,18 @@ class ClickPythonLiteralOption(click.Option):
             print(e)
             raise click.BadParameter(value)
 
-def toPendulumActions( act, act_param, actionspace: Tuple ):
-  #  print(actionspace)
-  #  print(action)
-  #  assert actionspace.contains(action)
-  #  zero=np.array([0],dtype=np.float32)
-  #  two = zero + 2
- #   truncated = min(two, max(zero,act_param))
+def toPendulumActions( act, act_param, actionspace: Tuple ):  # return continuous actions
     
     if act == 0:
-  #      print(-truncated)
         return -act_param
     elif act ==1:
-  #      print(truncated)
         return act_param
     else:
         assert False
         return (2, [])
         
 
-def pad_action(act, act_param): #, pmax):
+def pad_action(act, act_param): #, pmax):     # not being used
     zero=np.array([0],dtype=np.float32)
     two = zero + 2
     truncated = min(two, max(zero,act_param))
@@ -99,7 +81,6 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
     
     env_name = 'Pendulum-v1'
     env = gym.make(env_name)
-  #  env = wrapperPara_newRewardNoHindsight(env)
 
     print("Observation space: ")
     print(env.observation_space)
@@ -114,19 +95,6 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
     # env = ScaledStateWrapper(env)     why do i need to scale the observation space
 #    if scale_actions:
  #       env = ScaledParameterisedActionWrapper(env)
-
-    
-
-    # actions are accelerate, turn, break
-  #  parameters_min = np.array([0, 0, 0], dtype="float32")                      # min of charge with grid and PV
-  #  parameters_max = np.array([0.5, np.pi/2, 0], dtype="float32")      # max of charge with grid and PV
-  #  sliding_action_space = Tuple(( Discrete(3), Box(parameters_min[0:1], parameters_max[0:1]), Box(parameters_min[1:2], parameters_max[1:2]), Box(parameters_min[2:3], parameters_max[2:3]) ))
-
-    
-   # print("sliding parameters space N/A: ")
-   # print(env.action_space[1])
-   # print("sliding obs: ")
-   # print(env.observation_space.shape[0])
 
 
     assert not (multipass)
@@ -165,9 +133,6 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
     print("agent instantiated")
     if initialise_params:
         print("initialising params")
-     #   print("info env.action_space.spaces to compare to parametric version below")
-     #   print(env.action_space.spaces)
-     #   print(env.action_space.spaces[0].n)
         print("info sliding_action_space.spaces[0].n for horizontal shape of initial weights, and len of initial bias, should be same as initial params len")
         print(ParametricPendulumActionSpace.spaces[0].n)
         print("info obs space.shape[0] for horizontal shape of initial weights") 
@@ -223,10 +188,6 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
             ret = env.step(action)
             
             next_state, reward, terminal,_, info = ret
-   #         print(next_state)
-            #next_state = list(next_state.values())
-           # next_state = [i[0] for i in next_state]
-      #      next_state = np.array(next_state, dtype=np.float32, copy=False)
 
             next_act, next_act_param, next_all_action_parameters = agent.act(next_state)
          #   next_action = pad_action(next_act, next_act_param) #, env.pmax)
@@ -239,23 +200,16 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
             state = next_state
 
             episode_reward += reward
-    #        print(reward)
+
             if visualise and i % render_freq == 0:
                 env.render()
 
             if i % measure_step == 0 and countsampleepisodes < numsampleepisodes:
                 eptimes = np.append(eptimes,j)
                 eprewards = np.append(eprewards, reward)
-     #           epindices = np.append(epindices, info["data_index"])
-     #           eppvs = np.append(eppvs,info["pv_gen"])
-     #           eploads = np.append(eploads,info["load"])
-     #           epsocs = np.append(epsocs,info["battery_cont"])
-     #           epcosts = np.append(epcosts,info["cum_cost"])
-     #           epactions = np.append(epactions, info["realcharge_action"])
+
 
             if terminal:
-                #print("terminal")
-              #  env.reset()
                 print("broken")
                 break
 
@@ -290,13 +244,8 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
     if save_freq > 0 and save_dir:
         agent.save_models(os.path.join(save_dir, str(i)))
 
-    #returns = env.get_episode_rewards()
- #   returns = env.total_rewards 
     print("Ave. return =", sum(returns) / len(returns))
-    #print("Ave. return =", (returns) / episodes )
     
-    
-    #print("Ave. last 100 episode return =", sum(returns[-100:]) / 100.)
 
     np.save(os.path.join(dir, title + "{}".format(str(seed))),returns)
 
@@ -324,32 +273,15 @@ def plotperformance(performance, dataslices, namecfg, fn, interval=None):
     output, bsize, epsilon, seed = namecfg    
 
     print(performance)
-    #yrew = np.mean(testrewards, axis=0)
-    #errorrew=np.std(testrewards, axis=0)
 
     yrew = [np.mean(slice) for slice in performance]
     errorrew=[0.1 for slice in performance]
-
-  #  yconsums = [np.mean(slice["pv_consums"]) for slice in dataslices]
-  #  errorconsum=[np.std(slice["pv_consums"]) for slice in dataslices]
-
-  #  ysocs = [np.mean(slice["socs"]) for slice in dataslices]
-  #  errorsocs = [np.std(slice["socs"]) for slice in dataslices]
-
-  #  ymaxpvs = [np.mean(slice["maxpvs"]) for slice in dataslices]
-  #  errormaxpv = [np.std(slice["maxpvs"]) for slice in dataslices]
               
     yrewards = [np.mean(slice["rewards"]) for slice in dataslices]
     errorrewards = [np.std(slice["rewards"]) for slice in dataslices]    
 
- #   maxcost = max( [max(slice["costs"]) for slice in dataslices] )
- #   ycosts = [np.mean(slice["costs"]/maxcost) for slice in dataslices]
- #   errorcosts = [np.std(slice["costs"]/maxcost) for slice in dataslices]
 
     x = range(0,len(performance)*interval,interval)
-  #  for a in x:
-   #     assert a in ep
-    #x = [item[0] for item in performance]
     xless = range(interval,len(performance)*interval,interval)
 
 
@@ -357,25 +289,14 @@ def plotperformance(performance, dataslices, namecfg, fn, interval=None):
     plt.xlabel('Timestep')
     plt.ylabel('Average Reward')
     plt.title('epsilon: {}, batch size: {}, seed: {}'.format(epsilon, bsize, seed))
-    ax.errorbar(x, yrew, fmt='-ko')
-  #  ax.plot(x, yrew, '-ko')
-  #  ax.errorbar(xless, yrewards, yerr=errorrewards, fmt='-ro')
-  #  ax.errorbar(xless, ycosts, yerr=errorcosts, fmt='-go')
-  #  ax.errorbar(xless, ysocs, yerr=errorsocs, fmt='-bo')
-  #  ax.errorbar(xless, yconsums, yerr=errorconsum, fmt='-co')
- #   ax.errorbar(xless, ymaxpvs, yerr=errormaxpv, fmt='c.')
 
+    ax.errorbar(x, yrew, fmt='-ko')
     ax.errorbar(xless, yrewards, fmt='-ro')
- #   ax.errorbar(xless, ycosts,  fmt='-go')
- #   ax.errorbar(xless, ysocs, fmt='-bo')
- #   ax.errorbar(xless, yconsums, fmt='-co')
- #   ax.errorbar(xless, ymaxpvs,  fmt='c.')
-        
+
     ax.legend(['test av reward','interval av reward','interval av total costs', 'interval av SoCs','interval av pv consumption','interval av max pv consum'])
 
-#    ax.plot(x, ymaxpvs[None, :])
+
     plt.savefig(fn+'.png')
-#     savemat(fn+'.mat', {'reward':testrewards})
     plt.close()
     print("saved Average Reward")
 
@@ -385,10 +306,8 @@ def plotsampleepisodeslong(data, path, loadscaling):
     
     numeps = len(data)
     fig, axarr = plt.subplots(3, math.ceil(numeps/3))
- #   figind, axarr2 = plt.subplots(3, math.ceil(numeps/3))
 
     fig.figsize = (40, 4*math.ceil(numeps/3))
-#    figind.figsize = (40, 4*math.ceil(numeps/3))
 
     for ep in range(numeps):
 
@@ -403,39 +322,17 @@ def plotsampleepisodeslong(data, path, loadscaling):
 
         zeroat = np.where(timesteps == 0)[0][0]
         add = 24*np.append(np.zeros(zeroat), np.ones(len(timesteps)-zeroat))
-    #    timesteps = timesteps + add
-     #   axarr[axida, axidb].plot(timesteps, pvs / loadscaling)
-     #   axarr[axida, axidb].plot(timesteps, loads / loadscaling)
-        axarr[plotindex].plot(timesteps, rewards)
-     #   axarr[axida, axidb].plot(timesteps, costs / 1000)
-     #   axarr[axida, axidb].plot(timesteps, realactions / 3500)
-    #    axarr[plotindex].axvspan(20, 31, alpha=0.25, color='grey')
 
-  #      indices = indices % 24
-  #      if 0 in indices:
-  #          zeroat = np.where(indices == 0)[0][0]
-  #          add = 24*np.append(np.zeros(zeroat), np.ones(len(indices)-zeroat))
-  #          indices = indices + add
-  #      axarr2[axida, axidb].plot(indices, pvs / loadscaling)
-  #      axarr2[axida, axidb].plot(indices, loads / loadscaling)
-  #      axarr2[axida, axidb].plot(indices, socs)
-  #      axarr2[axida, axidb].plot(indices, costs / 1000)
-  #      axarr2[axida, axidb].plot(indices, realactions / 3500)
-        
-   #     axarr2[axida, axidb].axvspan(20, 31, alpha=0.25, color='grey')        
-   #     if(8 in indices): axarr2[axida, axidb].axvspan(0, 7, alpha=0.25, color='grey')
-   #     if(43 in indices): axarr2[axida, axidb].axvspan(44, 48, alpha=0.25, color='grey')
+        axarr[plotindex].plot(timesteps, rewards)
 
 
     axarr[0, 0].legend(['pv','load','soc','cost/1000','real actions'])
-   # axarr2[0, 0].legend(['pv','load','soc','cost/1000','real actions'])
 
 
     if not os.path.exists(path):
         os.makedirs(path)
     path = '{}/sample_episodes'.format(path)
     fig.savefig(path+'.png')
- #   figind.savefig(path+'indices.png')
 
 
 
@@ -443,7 +340,7 @@ def plotsampleepisodeslong(data, path, loadscaling):
 
 
 def evaluate(env, agent, episodes=1000, ParametricPendulumActionSpace=None):
-   # agent.eval()
+
     epsf = agent.epsilon_final
     eps = agent.epsilon
     noise = agent.noise
@@ -460,7 +357,6 @@ def evaluate(env, agent, episodes=1000, ParametricPendulumActionSpace=None):
         total_reward = 0.
         while not terminal and t < 200:
             t += 1
-     #       state = [i[0] for i in state]
             state = np.array(state, dtype=np.float32, copy=False)
             act, act_param, all_action_parameters = agent.act(state)
       #      action = pad_action(act, act_param) #, env.pmax)
@@ -469,11 +365,11 @@ def evaluate(env, agent, episodes=1000, ParametricPendulumActionSpace=None):
             total_reward += reward
         timesteps.append(t)
         returns.append(total_reward)
-    # return np.column_stack((returns, timesteps))
+
     agent.epsilon_final = epsf
     agent.epsilon = eps
     agent.noise = noise
-  #  agent.train()
+
     return np.array(returns)
 
 
