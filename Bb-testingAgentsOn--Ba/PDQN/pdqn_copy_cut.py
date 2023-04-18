@@ -1,7 +1,5 @@
 import os
 import sys
-#sys.path.append('C:/Users/ngroo/OneDrive/Documents/_cambridge-work/II/Part II Project/gitrepo1/Utils/MPDQNmaster')
-#sys.path.append('C:/Users/ngroo/OneDrive/Documents/_cambridge-work/II/Part II Project/gitrepo1')
 
 import click
 import argparse
@@ -9,30 +7,14 @@ import time
 import matplotlib.pyplot as plt
 import math
 import gym
-import bauwerk
-#import gym_platform
-#from gym.wrappers import Monitor
 
-#import SBHparametricWrapperforAgent1
-#from SBHparametricWrapperforAgent1 import ParametricActions
+import bauwerk
 from wrapperParaAgent_newRewardNoHindsight import wrapperPara_newRewardNoHindsight
 from bauwerk.envs.solar_battery_house import SolarBatteryHouseCoreEnv
 
-
-
 import numpy as np
-
-
-#from MPDQNmaster import common, agents
 from agents.pdqn import PDQNAgent
 from common.wrappers import ScaledStateWrapper, ScaledParameterisedActionWrapper
-
-from agents.pdqn_multipass import MultiPassPDQNAgent
-
-
-
-import click
-import ast
 
 import click
 import ast
@@ -73,14 +55,14 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
     env_name = 'bauwerk/SolarBatteryHouse-v0'
     cfg = { 'solar_scaling_factor' : loadscaling,
           'load_scaling_factor' : loadscaling}
-   # env = gym.make(args.env, cfg)
     env = SolarBatteryHouseCoreEnv(cfg)
     env = wrapperPara_newRewardNoHindsight(env)
+
     print("pre-Observation space: ")
     print(env.observation_space)
     print("pre-Action space: ")
     print(env.action_space)
-    initial_params_ = [3., 10., 400.]
+    initial_params_ = [30., 3000.]
 
     # env = ScaledStateWrapper(env)     why do i need to scale the observation space
  #   env = PlatformFlattenedActionWrapper(env)
@@ -88,7 +70,6 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
  #       env = ScaledParameterisedActionWrapper(env)
 
     dir = os.path.join(save_dir,title)
-  #  env = Monitor(env, directory=os.path.join(dir,str(seed)), video_callable=False, write_upon_reset=False, force=True)
     env.seed(seed)
     np.random.seed(seed)
 
@@ -215,8 +196,6 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
                 epactions = np.append(epactions, info["realcharge_action"])
 
             if terminal:
-                #print("terminal")
-              #  env.reset()
                 break
         agent.end_episode()
 
@@ -257,14 +236,10 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
     if save_freq > 0 and save_dir:
         agent.save_models(os.path.join(save_dir, str(i)))
 
-#    returns = env.get_episode_rewards()
     returns = env.total_rewards 
-    #print("Ave. return =", sum(returns) / len(returns))
     print("Ave. return =", (returns) / episodes )
     
     
-    #print("Ave. last 100 episode return =", sum(returns[-100:]) / 100.)
-
     np.save(os.path.join(dir, title + "{}".format(str(seed))),returns)
 
     if evaluation_episodes > 0:
@@ -314,9 +289,7 @@ def plotperformance(performance, dataslices, namecfg, fn, interval=None):
     errorcosts = [np.std(slice["costs"]/maxcost) for slice in dataslices]
 
     x = range(0,len(performance)*interval,interval)
-  #  for a in x:
-   #     assert a in ep
-    #x = [item[0] for item in performance]
+
     xless = range(interval,len(performance)*interval,interval)
 
 
@@ -325,12 +298,6 @@ def plotperformance(performance, dataslices, namecfg, fn, interval=None):
     plt.ylabel('Average Reward')
     plt.title('epsilon: {}, batch size: {}, seed: {}'.format(epsilon, bsize, seed))
     ax.errorbar(x, yrew, fmt='-ko')
-  #  ax.plot(x, yrew, '-ko')
-  #  ax.errorbar(xless, yrewards, yerr=errorrewards, fmt='-ro')
-  #  ax.errorbar(xless, ycosts, yerr=errorcosts, fmt='-go')
-  #  ax.errorbar(xless, ysocs, yerr=errorsocs, fmt='-bo')
-  #  ax.errorbar(xless, yconsums, yerr=errorconsum, fmt='-co')
- #   ax.errorbar(xless, ymaxpvs, yerr=errormaxpv, fmt='c.')
 
     ax.errorbar(xless, yrewards, fmt='-ro')
     ax.errorbar(xless, ycosts,  fmt='-go')
@@ -340,9 +307,8 @@ def plotperformance(performance, dataslices, namecfg, fn, interval=None):
         
     ax.legend(['test av reward','interval av reward','interval av total costs', 'interval av SoCs','interval av pv consumption','interval av max pv consum'])
 
-#    ax.plot(x, ymaxpvs[None, :])
+
     plt.savefig(fn+'.png')
-#     savemat(fn+'.mat', {'reward':testrewards})
     plt.close()
     print("saved Average Reward")
 
@@ -403,13 +369,11 @@ def plotsampleepisodeslong(data, path, loadscaling):
 
 def pad_action(act, act_param, pmax):
     params = [np.zeros((1,), dtype=np.float32), np.zeros((1,), dtype=np.float32)]
-  #  print(act_param)
     params[act] = max(min(act_param, np.array([pmax], dtype=np.float32)), np.array([0], dtype=np.float32))
     return (act, params[0], params[1])
 
 
 def evaluate(env, agent, episodes=1000):
-   # agent.eval()
     epsf = agent.epsilon_final
     eps = agent.epsilon
     noise = agent.noise
@@ -438,7 +402,6 @@ def evaluate(env, agent, episodes=1000):
     agent.epsilon_final = epsf
     agent.epsilon = eps
     agent.noise = noise
-  #  agent.train()
     return np.array(returns)
 
 

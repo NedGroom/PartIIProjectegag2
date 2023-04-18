@@ -70,8 +70,8 @@ def train(num_episodes, agent, env,  evaluate, validate_every,
                 epactions = np.append(epactions, info["realcharge_action"])
 
         # [optional] save intermideate model
-        if episode % int(num_episodes/3) == 0:
-            agent.save_model(output) ###was about to add a if correct episode store display data
+     #   if episode % int(num_episodes/3) == 0:
+     #       agent.save_model(output) ###was about to add a if correct episode store display data
 
         # update 
         step += 1
