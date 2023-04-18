@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 import math
 from wrapperDiscretepg_newRewardNoHindsight import wrapperDiscrete_newRewardNoHindsight
 from bauwerk.envs.solar_battery_house import SolarBatteryHouseCoreEnv
+from newBaseEnvWrapper import NewBaseEnvWrapper
+from discreteOverBase import DiscreteOverBase
 
 
 
@@ -168,7 +170,7 @@ def update_parameters(current_model, target_model):
 
 def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0.01, update_step=10, batch_size=1, update_repeats=50,
          num_episodes=401, seed=42, max_memory_size=500000, lr_gamma=0.9, lr_step=32, measure_step=100, num_sample_eps=6, saveload='default',
-         measure_repeats=5, hidden_dim=64, env_name='bauwerk/SolarBatteryHouse-v0', cnn=False, horizon=np.inf, render=True, render_step=50, loadscaling=1):
+         measure_repeats=5, hidden_dim=64, env_name='bauwerk/SolarBatteryHouse-v0', cnn=False, horizon=np.inf, render=True, render_step=50, loadscaling=1, tolerance=0.3):
     """
     :param gamma: reward discount factor
     :param lr: learning rate for the Q-Network
@@ -200,7 +202,9 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
     cfg = { 'solar_scaling_factor' : loadscaling,
           'load_scaling_factor' : loadscaling}
     env = SolarBatteryHouseCoreEnv(cfg)
-    env = wrapperDiscrete_newRewardNoHindsight(env)
+  #  env = wrapperDiscrete_newRewardNoHindsight(env)
+    env = NewBaseEnvWrapper(env, tolerance=tolerance)
+    env = DiscreteOverBase(env)
     torch.manual_seed(seed)
     env.seed(seed)
 
@@ -392,9 +396,7 @@ def plotsampleepisodeslong(data, path, loadscaling):
         
         axidb = math.floor(ep/3)
         axida = ep - 3 * axidb
-        print((axarr.shape))
-        print(axida)
-        print(axidb)
+
         if axarr.shape == (3,):
             plotindex = ep
         else:
