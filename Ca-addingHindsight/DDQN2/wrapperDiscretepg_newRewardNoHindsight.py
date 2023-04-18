@@ -1,4 +1,7 @@
 
+## exactly the same as Bb ddqn wrapper except added achievedgoal parameter in the info ouput
+# and there is also infrastructure to add both goals to the observation as a new dict structure, but currently commented out.
+
 
 ## The only changes in this wrapper is to add a few lines after getObsFromState, to transform the time of day into the TimeToDeparture.
 ## There will also need to be a field in the environment which is TimeOfDeparture. This will be set each episode in a later implementation, but here I will just assign it to a value.
