@@ -5,7 +5,7 @@
 
 import gym
 from gym.spaces import Discrete, Tuple, Box
-from typing import Optional, Tuple, Union, Any
+from typing import Optional, Union, Any
 import random
 import math
 import numpy as np
@@ -330,14 +330,6 @@ class newBaseEnvWrapper(gym.Wrapper):
         assert (time_til_departure > np.array([-1]))
 
         self.time_til_departure = time_til_departure
-
-
-        # make sure we have current type of battery
-        # (relevant if task was changed)
-        (
-            self.min_charge_power,
-            self.max_charge_power,
-        ) = self.battery.get_charging_limits()
 
 
 
