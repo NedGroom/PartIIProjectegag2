@@ -234,12 +234,12 @@ class PDQNAgent(Agent):
         assert self.observation_space == observation_space
         print(self.num_actions+self.action_parameter_size)
         print("observations shape")
-        print((observation_space.__len__(),))
+        print((observation_space.shape))
         print(self.num_actions)
         print(self.action_parameter_size)
-        self.replay_memory = Memory(replay_memory_size, (observation_space.__len__(),), (1+self.action_parameter_size,), next_actions=False)
-        self.actor = actor_class(self.observation_space.__len__(), self.num_actions, self.action_parameter_size, **actor_kwargs).to(device)
-        self.actor_target = actor_class(self.observation_space.__len__(), self.num_actions, self.action_parameter_size, **actor_kwargs).to(device)
+        self.replay_memory = Memory(replay_memory_size, observation_space.shape, (1+self.action_parameter_size,), next_actions=False)
+        self.actor = actor_class(self.observation_space.shape[0], self.num_actions, self.action_parameter_size, **actor_kwargs).to(device)
+        self.actor_target = actor_class(self.observation_space.shape[0], self.num_actions, self.action_parameter_size, **actor_kwargs).to(device)
         hard_update_target_network(self.actor, self.actor_target)
         self.actor_target.eval()
 
@@ -253,9 +253,9 @@ class PDQNAgent(Agent):
     #    print(*actor_param_kwargs == {})
         print(actor_param_kwargs)
         print(actor_param_kwargs == {})
-        self.actor_param = actor_param_class(self.observation_space.__len__(), self.num_actions, self.action_parameter_size, **actor_param_kwargs).to(device)
+        self.actor_param = actor_param_class(self.observation_space.shape[0], self.num_actions, self.action_parameter_size, **actor_param_kwargs).to(device)
         print("obssservation space: " + str(self.observation_space))
-        self.actor_param_target = actor_param_class(self.observation_space.__len__(), self.num_actions, self.action_parameter_size, **actor_param_kwargs).to(device)
+        self.actor_param_target = actor_param_class(self.observation_space.shape[0], self.num_actions, self.action_parameter_size, **actor_param_kwargs).to(device)
         hard_update_target_network(self.actor_param, self.actor_param_target)
         self.actor_param_target.eval()
 
