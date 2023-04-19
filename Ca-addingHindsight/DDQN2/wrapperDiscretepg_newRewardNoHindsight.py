@@ -58,8 +58,8 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
                 self.solar.max_value,
                 self.cfg.paper_battery_capacity,
                 self.cfg.episode_len + 1,
-                1,
-                1
+         #       1,                                     ## these last two is for option 2 of how to deliver achieved_goal
+        #        1
             ],
             dtype=np.float32,
         )
@@ -69,16 +69,16 @@ class wrapperDiscrete_newRewardNoHindsight(gym.Wrapper):
                 self.solar.min_value,
                 0,
                 -1,
-                0,
-                0
+       #         0,
+        #        0
             ],
             dtype=np.float32,
         )
         goallow = np.array([0,0],dtype=np.float32) # goal is [pvconsumption, SoC], which are both between 0 and 1.
         goalhigh = np.array([1,1],dtype=np.float32)
 
-        self.observation_space = Box(statelow, statehigh, dtype=self.cfg.dtype)
-     #   self.observation_space = Dict( { "state": Box(statelow, statehigh, dtype=self.cfg.dtype) , 
+        self.observation_space = Box(statelow, statehigh, dtype=self.cfg.dtype)                 ## this is the chosen option, option 3, where state type is unchanged.
+     #   self.observation_space = Dict( { "state": Box(statelow, statehigh, dtype=self.cfg.dtype) ,             ## this is option one of how to deliver the goals along with the state
      #                                   "achievedGoal": Box(goallow, goalhigh, dtype=self.cfg.dtype) , 
      #                                   "desiredGoal": Box(goallow, goalhigh, dtype=self.cfg.dtype) })
 
