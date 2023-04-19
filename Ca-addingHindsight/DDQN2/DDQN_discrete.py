@@ -13,7 +13,8 @@ import matplotlib.pyplot as plt
 import math
 from wrapperDiscretepg_newRewardNoHindsight import wrapperDiscrete_newRewardNoHindsight
 from bauwerk.envs.solar_battery_house import SolarBatteryHouseCoreEnv
-
+from newBaseEnvWrapper import NewBaseEnvWrapper
+from discreteOverBase import DiscreteOverBase
 
 
 """
@@ -94,8 +95,7 @@ class Memory:
         """
         n = len(self.is_done)
         idx = random.sample(range(0, n-1), batch_size)
-   #     print(n)
-   #     print(idx)
+
         return torch.Tensor(self.state)[idx].to(device), torch.LongTensor(self.action)[idx].to(device), \
                torch.Tensor(self.state)[1+np.array(idx)].to(device), torch.Tensor(self.rewards)[idx].to(device), \
                torch.Tensor(self.is_done)[idx].to(device)
@@ -236,7 +236,9 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
     cfg = { 'solar_scaling_factor' : loadscaling,
           'load_scaling_factor' : loadscaling}
     env = SolarBatteryHouseCoreEnv(cfg)
-    env = wrapperDiscrete_newRewardNoHindsight(env, tolerance=tolerance)
+  #  env = wrapperDiscrete_newRewardNoHindsight(env, tolerance=tolerance)
+    env = NewBaseEnvWrapper(env, tolerance=tolerance)
+    env = DiscreteOverBase(env)
     torch.manual_seed(seed)
     env.seed(seed)
 
@@ -274,7 +276,7 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
     performance = []
 
     achievedgoal = [1,1]
-    desiredgoal = [tolerance, tolerance]
+    desiredgoal = [0, 0]        ## desired goal is [0,0], but reward 1 if within tolerance of goal.
 
 
     for episode in range(num_episodes):
