@@ -4,7 +4,7 @@
 ## There will also need to be a field in the environment which is TimeOfDeparture. This will be set each episode in a later implementation, but here I will just assign it to a value.
 
 import gym
-from gym.spaces import Discrete, Tuple, Box
+from gym.spaces import Discrete, Tuple, Box, Dict
 from typing import Optional, Union, Any
 import random
 import math
@@ -47,29 +47,35 @@ class NewBaseEnvWrapper(gym.Wrapper):
         
 
 
-        high = np.array(
+        statehigh = np.array(
             [
                 self.load.max_value,
                 self.solar.max_value,
                 self.cfg.paper_battery_capacity,
                 self.cfg.episode_len + 1,
+         #       1,                                     ## these last two is for option 2 of how to deliver achieved_goal
+        #        1
             ],
             dtype=np.float32,
         )
-
-        low = np.array(
+        statelow = np.array(
             [
                 self.load.min_value,
                 self.solar.min_value,
                 0,
                 -1,
+       #         0,
+        #        0
             ],
             dtype=np.float32,
         )
+        goallow = np.array([0,0],dtype=np.float32) # goal is [pvconsumption, SoC], which are both between 0 and 1.
+        goalhigh = np.array([1,1],dtype=np.float32)
 
-        self.observation_space = gym.spaces.Box(low, high, dtype=self.cfg.dtype)
-
-
+        self.observation_space = Box(statelow, statehigh, dtype=self.cfg.dtype)                 ## this is the chosen option, option 3, where state type is unchanged.
+     #   self.observation_space = Dict( { "state": Box(statelow, statehigh, dtype=self.cfg.dtype) ,             ## this is option one of how to deliver the goals along with the state
+     #                                   "achievedGoal": Box(goallow, goalhigh, dtype=self.cfg.dtype) , 
+     #                                   "desiredGoal": Box(goallow, goalhigh, dtype=self.cfg.dtype) })
 
         self.reset(seed=0)
 
@@ -227,6 +233,8 @@ class NewBaseEnvWrapper(gym.Wrapper):
         info["cum_cost"] = self.state["cum_cost"]
         info["data_index"] = self.solar.time_step
         info["realcharge_action"] = realcharge_action
+        info["achieved_goal"] = np.array([1 - self.battery.b/self.cfg.paper_battery_capacity, self.max_pv_consumption - self.my_pv_consumption], dtype=np.float32)      # new line
+                    ## the goal is [0,0]. The episode is a success if you are within a tolerance of battery approaching max capacity, and pv consumption approching max pv consumption.
 
         info = {**info, **self.grid.get_info()}
 
