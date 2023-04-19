@@ -4,13 +4,15 @@ import matplotlib.pyplot as plt
 import gym
 from scipy.io import savemat
 from wrapperPartial_newRewardNoHindsight import wrapperPartial_newRewardNoHindsight
+from newBaseEnvWrapper import NewBaseEnvWrapper
+from bauwerk.envs.solar_battery_house import EnvConfig, SolarBatteryHouseCoreEnv
 
 
 from util import *
 
 class Evaluator(object):
 
-    def __init__(self, num_episodes, interval=1, save_path='', max_episode_length=None, args=None):
+    def __init__(self, num_episodes, interval=1, save_path='', max_episode_length=None, args=None, tolerance = 0.3, loadscaling=1000):
         self.num_episodes = num_episodes
         self.max_episode_length = max_episode_length
         self.interval = interval
@@ -18,6 +20,8 @@ class Evaluator(object):
         self.epsilon = args.epsilon
         self.bsize = args.bsize
         self.seed = args.seed
+        self.tolerance = tolerance
+        self.loadscaling = loadscaling
         self.testrewards = np.array([]).reshape(num_episodes,0)
 
         self.consumslices = []
@@ -31,8 +35,12 @@ class Evaluator(object):
         self.is_training = False
         observation = None
         result = []
-        env = wrapperPartial_newRewardNoHindsight( gym.make("bauwerk/SolarBatteryHouse-v0") )
-
+        
+        cfg = { 'solar_scaling_factor' : self.loadscaling,
+                'load_scaling_factor' : self.loadscaling}
+        env = SolarBatteryHouseCoreEnv(cfg)
+        #env = wrapperPartial_newRewardNoHindsight(env)
+        env = NewBaseEnvWrapper(env, tolerance=self.tolerance)
 
         for episode in range(self.num_episodes):
 

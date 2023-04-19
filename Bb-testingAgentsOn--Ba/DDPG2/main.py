@@ -17,6 +17,8 @@ from ddpg import DDPG
 from util import *
 from wrapperPartial_newRewardNoHindsight import wrapperPartial_newRewardNoHindsight
 import matplotlib.pyplot as plt
+from newBaseEnvWrapper import NewBaseEnvWrapper
+
 
 #gym.undo_logger_setup()
 
@@ -51,9 +53,11 @@ def train(num_episodes, agent, env,  evaluate, validate_every,
         # agent pick action ...
         if step <= warmup:
             action = agent.random_action()
+            print("random")
         else:
             action = agent.select_action(observation)
 
+        action = np.float32(action)
         # env step, observe, and update policy
         observation, reward, done, _, info = env.step(action)
         agent.observe(reward, observation, done)
@@ -216,38 +220,42 @@ def plotsampleepisodeslong(data, path, loadscaling):
         
         axidb = math.floor(ep/3)
         axida = ep - 3 * axidb
+        if axarr.shape == (3,):
+            plotindex = ep
+        else:
+            plotindex = (axida, axidb)
 
         zeroat = np.where(timesteps == 0)[0][0]
         add = 24*np.append(np.zeros(zeroat), np.ones(len(timesteps)-zeroat))
         timesteps = timesteps + add
-        axarr[axida, axidb].plot(timesteps, pvs / loadscaling)    # this will call an error if train eps too small, or validateevery too big
-        axarr[axida, axidb].plot(timesteps, loads / loadscaling)
-        axarr[axida, axidb].plot(timesteps, socs)
-        axarr[axida, axidb].plot(timesteps, costs / 1000)
-        axarr[axida, axidb].plot(timesteps, realactions / 3500)
-        axarr[axida, axidb].axvspan(20, 31, alpha=0.25, color='grey')
+        axarr[plotindex].plot(timesteps, pvs / loadscaling)    # this will call an error if train eps too small, or validateevery too big
+        axarr[plotindex].plot(timesteps, loads / loadscaling)
+        axarr[plotindex].plot(timesteps, socs)
+        axarr[plotindex].plot(timesteps, costs / 1000)
+        axarr[plotindex].plot(timesteps, realactions / 3500)
+        axarr[plotindex].axvspan(20, 31, alpha=0.25, color='grey')
 
         indices = indices % 24
         if 0 in indices:
             zeroat = np.where(indices == 0)[0][0]
             add = 24*np.append(np.zeros(zeroat), np.ones(len(indices)-zeroat))
             indices = indices + add
-        axarr2[axida, axidb].plot(indices, pvs / loadscaling)
-        axarr2[axida, axidb].plot(indices, loads / loadscaling)
-        axarr2[axida, axidb].plot(indices, socs)
-        axarr2[axida, axidb].plot(indices, costs / 1000)
-        axarr2[axida, axidb].plot(indices, realactions / 3500)
+        axarr2[plotindex].plot(indices, pvs / loadscaling)
+        axarr2[plotindex].plot(indices, loads / loadscaling)
+        axarr2[plotindex].plot(indices, socs)
+        axarr2[plotindex].plot(indices, costs / 1000)
+        axarr2[plotindex].plot(indices, realactions / 3500)
         
-        axarr2[axida, axidb].axvspan(20, 31, alpha=0.25, color='grey')        
-        if(8 in indices): axarr2[axida, axidb].axvspan(0, 7, alpha=0.25, color='grey')
-        if(43 in indices): axarr2[axida, axidb].axvspan(44, 48, alpha=0.25, color='grey')
+        axarr2[plotindex].axvspan(20, 31, alpha=0.25, color='grey')        
+        if(8 in indices): axarr2[plotindex].axvspan(0, 7, alpha=0.25, color='grey')
+        if(43 in indices): axarr2[plotindex].axvspan(44, 48, alpha=0.25, color='grey')
 
 
-    axarr[0, 0].legend(['pv','load','soc','cost/1000','real actions'])
-    axarr2[0, 0].legend(['pv','load','soc','cost/1000','real actions'])
+    axarr[plotindex].legend(['pv','load','soc','cost/1000','real actions'])
+    axarr2[plotindex].legend(['pv','load','soc','cost/1000','real actions'])
 
     
-    path = '{}/sample_episodes'.format(path)
+    path = '{}sample_episodes'.format(path)
     fig.savefig(path+'.png')
     figind.savefig(path+'indices.png')
     print("saved episodes")
@@ -264,7 +272,7 @@ def test(num_episodes, agent, env, evaluate, model_path, visualize=False, debug=
         if debug: prYellow('[Evaluate] #{}: mean_reward:{}'.format(i, validate_reward))
 
 
-def main(mode='', train_eps=0, bsize=64, epsilon=50000, validate_eps=20, validate_every=1000, seed=1, warmup=0, saveload='default', loadscaling=None):
+def main(mode='', train_eps=0, bsize=64, epsilon=50000, validate_eps=20, validate_every=1000, seed=1, warmup=0, saveload='default', loadscaling=None, tolerance=0.3):
 
     parser = argparse.ArgumentParser(description='PyTorch on TORCS with Multi-modal')
 
@@ -315,16 +323,18 @@ def main(mode='', train_eps=0, bsize=64, epsilon=50000, validate_eps=20, validat
 
     cfg = { 'solar_scaling_factor' : loadscaling,
           'load_scaling_factor' : loadscaling}
-   # env = gym.make(args.env, cfg)
+  #  env = gym.make(args.env, cfg)
     env = SolarBatteryHouseCoreEnv(cfg)
-    env = wrapperPartial_newRewardNoHindsight(env)
+  #  env = wrapperPartial_newRewardNoHindsight(env)
+    env = NewBaseEnvWrapper(env, tolerance=tolerance)
     print(env.cfg.solar_scaling_factor)
 
     if args.seed > 0:
         np.random.seed(args.seed)
         env.seed(args.seed)
 
-    num_states = len(env.observation_space)
+    num_states = env.observation_space.shape[0]
+    print("num states: " + str(num_states))
     num_actions = env.action_space.shape[0]
 
     agent = DDPG(num_states, num_actions, args)
