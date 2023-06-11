@@ -5,16 +5,17 @@ import argparse
 from copy import deepcopy
 import torch
 import gym
+from gym.spaces import Dict, Box
 import sys
 import os
 import math
 import bauwerk
 from bauwerk.envs.solar_battery_house import EnvConfig, SolarBatteryHouseCoreEnv
 
-from normalized_env import NormalizedEnv
-from evaluator import Evaluator
-from ddpg import DDPG
-from util import *
+from .normalized_env import NormalizedEnv
+from .evaluator import Evaluator
+from .ddpg import DDPG
+from .util import *
 #from wrapperPartial_newRewardNoHindsight import wrapperPartial_newRewardNoHindsight
 import matplotlib.pyplot as plt
 from newBaseEnvWrapper import NewBaseEnvWrapper
@@ -23,7 +24,7 @@ from newBaseEnvWrapper import NewBaseEnvWrapper
 #gym.undo_logger_setup()
 
 def train(num_episodes, agent, env,  evaluate, validate_every, 
-          output, num_sample_eps=30, debug=True, warmup=0, bsize=2, epsilon=2, seed=2, loadscaling=None, tolerance=None):
+          output, prate=None, rate=None, tau=None, num_sample_eps=30, debug=True, warmup=0, bsize=2, epsilon=2, seed=2, loadscaling=None, tolerance=None):
 
     agent.is_training = True
     step = episode = episode_steps = 0
@@ -43,6 +44,8 @@ def train(num_episodes, agent, env,  evaluate, validate_every,
     sampleepisodes = []
     countsampleepisodes = 0
     numsampleepisodes = num_sample_eps
+
+    mastereps, mastersocs, masterconsums, masterrewards = [], [], [], []
 
     desiredGoal = [0,0]
     achievedGoal = [1,1]
@@ -112,6 +115,11 @@ def train(num_episodes, agent, env,  evaluate, validate_every,
             totalcosts.append(info["total_cost"])
 
 
+            mastereps.append(episode)
+            masterconsums.append(info["my_pv_consumption"] / info["max_pv_consumption"])
+            mastersocs.append(info["battery_cont"])
+            masterrewards.append(reward)
+
 
             # [optional] evaluate
             if episode > warmup and episode % validate_every == 0 and validate_every > 0:
@@ -136,7 +144,7 @@ def train(num_episodes, agent, env,  evaluate, validate_every,
                 validate_reward, testrewards = evaluate(env, policy, stats=dataslice, debug=True, save=True)
                 if debug: prYellow('[Evaluate] Step_{:07d}: mean_reward:{}'.format(step, validate_reward))
                 
-                pv_consums, maxpvs, socs, rewards, totalcosts, dataslice = [], [], [], [], [], {}
+                pv_consums, maxpvs, socs, rewards, totalcosts, dataslice, totalcosts = [], [], [], [], [], {}, []
 
             # reset
             episode_steps = 0
@@ -146,13 +154,19 @@ def train(num_episodes, agent, env,  evaluate, validate_every,
             observation = np.append(observation, desiredGoal)
             agent.reset(observation, desiredGoal)
 
-    namecfg = (output, bsize, epsilon, seed)
-    path = '{}/bs{}eps{}seed{}'.format(*namecfg)
+
+    masterData = {'episodes': mastereps, 'pvconsums': masterconsums, 'socs': mastersocs, 'rewards': masterrewards}
+
+
+    namecfg = (output, prate, rate, tau)
+    path = '{}/lra{}lrc{}tau{}'.format(*namecfg)
     if not os.path.exists(path):
         os.makedirs(path)
     plotsampleepisodeslong(sampleepisodes, path, loadscaling)
-    save_results_with_data(testrewards, dataslices, namecfg, '{}validate_slices_inside'.format(path), interval=validate_every)
+    save_results_with_data(testrewards, dataslices, namecfg, path, interval=validate_every)
  #   evaluate.save_results()
+    return masterData
+
 
 
 def replayMemory(memory, newgoal, episodeLength, tolerance):
@@ -187,7 +201,7 @@ def replayMemory(memory, newgoal, episodeLength, tolerance):
 
 
 def save_results_with_data(testrewards, dataslices, namecfg, fn, interval=None):
-        output, bsize, epsilon, seed = namecfg    
+        output, prate, rate, tau = namecfg    
 
 
         yrew = np.mean(testrewards, axis=0)
@@ -216,15 +230,15 @@ def save_results_with_data(testrewards, dataslices, namecfg, fn, interval=None):
         fig, ax = plt.subplots(1, 1, figsize=(6, 5))
         plt.xlabel('Timestep')
         plt.ylabel('Average Reward')
-        plt.title('epsilon: {}, batch size: {}, seed: {}'.format(epsilon, bsize, seed))
-        ax.errorbar(x, yrew, yerr=errorrew, fmt='-ko')
-        ax.errorbar(x, yrewards, yerr=errorrewards, fmt='-ro')
-        ax.errorbar(x, ycosts, yerr=errorcosts, fmt='-go')
-        ax.errorbar(x, ysocs, yerr=errorsocs, fmt='-bo')
-        ax.errorbar(x, yconsums, yerr=errorconsum, fmt='-co')
-        ax.errorbar(x, ymaxpvs, yerr=errormaxpv, fmt='c.')
+        plt.title('lr policy: {}, lr q: {}, tau: {}'.format(prate, rate, tau))
+  #      ax.errorbar(x, yrew, fmt='-ko')
+        ax.errorbar(x, yrewards, fmt='-ro')
+        ax.errorbar(x, ycosts, fmt='-go')
+        ax.errorbar(x, ysocs, fmt='-bo')
+        ax.errorbar(x, yconsums, fmt='-co')
+        ax.errorbar(x, ymaxpvs, fmt='c.')
         
-        ax.legend(['test av reward','interval av reward','interval av total costs', 'interval av SoCs','interval av pv consumption','interval av max pv consum'])
+        ax.legend(['interval av reward','interval av total costs', 'interval av SoCs','interval av pv consumption','interval av max pv consum'], loc='lower right')
 
     #    ax.plot(x, ymaxpvs[None, :])
         plt.savefig(fn+'.png')
@@ -318,7 +332,7 @@ def test(num_episodes, agent, env, evaluate, model_path, visualize=False, debug=
         if debug: prYellow('[Evaluate] #{}: mean_reward:{}'.format(i, validate_reward))
 
 
-def main(mode='', train_eps=0, bsize=64, epsilon=50000, validate_eps=20, validate_every=1000, seed=1, warmup=0, saveload='default', loadscaling=None, tolerance=0.3):
+def main(mode='', train_eps=0, bsize=64, epsilon=50000, validate_eps=20, validate_every=1000, seed=1, warmup=0, saveload='default', loadscaling=None, tolerance=0.3,prate=None, rate=None, tau=None):
 
     parser = argparse.ArgumentParser(description='PyTorch on TORCS with Multi-modal')
 
@@ -351,13 +365,16 @@ def main(mode='', train_eps=0, bsize=64, epsilon=50000, validate_eps=20, validat
     args = parser.parse_args()
    # args.output = get_output_folder(args.output, args.env)
     if saveload == 'default':
-        args.saveload = 'output/{}-rundef'.format(args.env)
+        args.saveload = 'output/masterhind/{}'.format(args.env)
     else: 
-        args.saveload = 'output/{}-{}'.format(args.env,saveload)
+        args.saveload = 'output/masterhind/{}'.format(saveload)
     args.mode = mode
     args.train_iter = train_eps + warmup
     args.bsize=bsize
     args.epsilon = epsilon
+    args.rate = rate
+    args.prate = prate
+    args.tau = tau
     args.validate_episodes = validate_eps
     args.validate_every = validate_every
     args.seed = seed
@@ -379,16 +396,22 @@ def main(mode='', train_eps=0, bsize=64, epsilon=50000, validate_eps=20, validat
         np.random.seed(args.seed)
         env.seed(args.seed)
 
-    num_states = env.observation_space.shape[0]
+    low = np.concatenate([env.observation_space.low, [0,0]])
+    high = np.concatenate([env.observation_space.high, [1,1]])
+    t = env.observation_space.dtype
+    inputObsSpace = Box(low, high, dtype = t)
+
+    num_states = inputObsSpace.shape[0]
     print("num states: " + str(num_states))
     num_actions = env.action_space.shape[0]
 
     agent = DDPG(num_states, num_actions, args)
     evaluate = Evaluator(args.validate_episodes, interval=args.validate_every, save_path=args.saveload, args=args)
 
+    returnvalue = None
 
     if args.mode == 'train':
-        train(args.train_iter, agent, env, evaluate, args.validate_every, args.saveload, 
+        returnvalue = train(args.train_iter, agent, env, evaluate, args.validate_every, args.saveload, prate=prate, rate=rate, tau=tau, 
               warmup=args.warmup, num_sample_eps = num_sample_eps, debug=args.debug, bsize=bsize, epsilon=epsilon, seed = args.seed, loadscaling=loadscaling, tolerance=tolerance)
 
     elif args.mode == 'test':
@@ -397,6 +420,8 @@ def main(mode='', train_eps=0, bsize=64, epsilon=50000, validate_eps=20, validat
 
     else:
         raise RuntimeError('undefined mode {}'.format(args.mode))
+
+    return returnvalue
 
 
 if __name__ == '__main__':

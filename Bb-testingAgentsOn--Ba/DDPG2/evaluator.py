@@ -3,12 +3,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import gym
 from scipy.io import savemat
-from wrapperPartial_newRewardNoHindsight import wrapperPartial_newRewardNoHindsight
+#from wrapperPartial_newRewardNoHindsight import wrapperPartial_newRewardNoHindsight
 from newBaseEnvWrapper import NewBaseEnvWrapper
 from bauwerk.envs.solar_battery_house import EnvConfig, SolarBatteryHouseCoreEnv
 
 
-from util import *
+from .util import *
 
 class Evaluator(object):
 

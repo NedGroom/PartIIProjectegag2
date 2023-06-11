@@ -11,19 +11,20 @@ import math
 import bauwerk
 from bauwerk.envs.solar_battery_house import EnvConfig, SolarBatteryHouseCoreEnv
 
-from normalized_env import NormalizedEnv
-from evaluator import Evaluator
-from ddpg import DDPG
-from util import *
-from wrapperPartial_newRewardNoHindsight import wrapperPartial_newRewardNoHindsight
+from .normalized_env import NormalizedEnv
+from .evaluator import Evaluator
+from .ddpg import DDPG
+from .util import *
+#from wrapperPartial_newRewardNoHindsight import wrapperPartial_newRewardNoHindsight
 import matplotlib.pyplot as plt
 from newBaseEnvWrapper import NewBaseEnvWrapper
+from progress.bar import Bar
 
 
 #gym.undo_logger_setup()
 
 def train(num_episodes, agent, env,  evaluate, validate_every, 
-          output, num_sample_eps=30, debug=True, warmup=0, bsize=2, epsilon=2, seed=2, loadscaling=None):
+          output, prate=None, rate=None, tau=None, num_sample_eps=30, debug=True, warmup=0, bsize=2, epsilon=2, seed=2, loadscaling=None):
 
     agent.is_training = True
     step = episode = episode_steps = 0
@@ -44,104 +45,123 @@ def train(num_episodes, agent, env,  evaluate, validate_every,
     sampleepisodes = []
     countsampleepisodes = 0
     numsampleepisodes = num_sample_eps
+
+    mastereps, mastersocs, masterconsums, masterrewards = [], [], [], []
+
+    with Bar('ddpg...') as bar:
     
-    while episode < num_episodes:
+        while episode < num_episodes:
 
-       # print(env.load.time_step)
-        assert(env.time_step == env.load.time_step%24)
+            # print(env.load.time_step)
+            assert(env.time_step == env.load.time_step%24)
 
-        # agent pick action ...
-        if step <= warmup:
-            action = agent.random_action()
-            print("random")
-        else:
-            action = agent.select_action(observation)
+            # agent pick action ...
+            if step <= warmup:
+                action = agent.random_action()
+        #        print("random")
+            else:
+                action = agent.select_action(observation)
 
-        action = np.float32(action)
-        # env step, observe, and update policy
-        observation, reward, done, _, info = env.step(action)
-        agent.observe(reward, observation, done)
-        if episode > warmup :
-            agent.update_policy()
+            print(action)
+            action = np.float32(action)
+            # env step, observe, and update policy
+            observation, reward, done, _, info = env.step(action)
+            print("reward: ", reward)
+            agent.observe(reward, observation, done)
+            if episode > warmup :
+                agent.update_policy()
 
-            if episode % validate_every == 0 and validate_every > 0 and countsampleepisodes < numsampleepisodes:
-                eptimes = np.append(eptimes,info["time_step"])
-                epindices = np.append(epindices, info["data_index"])
-                eppvs = np.append(eppvs,info["pv_gen"])
-                eploads = np.append(eploads,info["load"])
-                epsocs = np.append(epsocs,info["battery_cont"])
-                epcosts = np.append(epcosts,info["cum_cost"])
-                epactions = np.append(epactions, info["realcharge_action"])
+                if episode % validate_every == 0 and validate_every > 0 and countsampleepisodes < numsampleepisodes:
+                    eptimes = np.append(eptimes,info["time_step"])
+                    epindices = np.append(epindices, info["data_index"])
+                    eppvs = np.append(eppvs,info["pv_gen"])
+                    eploads = np.append(eploads,info["load"])
+                    epsocs = np.append(epsocs,info["battery_cont"])
+                    epcosts = np.append(epcosts,info["cum_cost"])
+                    epactions = np.append(epactions, info["realcharge_action"])
 
-        # [optional] save intermideate model
-     #   if episode % int(num_episodes/3) == 0:
-     #       agent.save_model(output) ###was about to add a if correct episode store display data
+            # [optional] save intermideate model
+            #   if episode % int(num_episodes/3) == 0:
+            #       agent.save_model(output) ###was about to add a if correct episode store display data
 
-        # update 
-        step += 1
-        episode_steps += 1
-        episode_reward += reward
-        observation = deepcopy(observation)
+            # update 
+            step += 1
+            episode_steps += 1
+            episode_reward += reward
+            observation = deepcopy(observation)
 
-        if done: # end of episode
-            if debug: prGreen('#{}: episode_reward:{} steps:{}'.format(episode,episode_reward,step))
+            if done: # end of episode
+                if debug: prGreen('#{}: episode_reward:{} steps:{}'.format(episode,episode_reward,step))
 
-            agent.memory.append(
-                observation,
-                agent.select_action(observation),
-                episode_reward, True
-            )
-     #       print(info)
-            pv_consums.append(info["my_pv_consumption"] / 100) # for percent
-            maxpvs.append(info["max_pv_consumption"] / 100) # for percent
-            socs.append(info["battery_cont"])
-            rewards.append(episode_reward)
-            totalcosts.append(info["total_cost"])
+                agent.memory.append(
+                    observation,
+                    agent.select_action(observation),
+                    episode_reward, True
+                )
+            #       print(info)
+                pv_consums.append(info["my_pv_consumption"] ) # for percent
+                maxpvs.append(info["max_pv_consumption"] ) # for percent
+                socs.append(info["battery_cont"])
+                rewards.append(episode_reward)
+                totalcosts.append(info["total_cost"])
+
+                mastereps.append(episode)
+                masterconsums.append(info["my_pv_consumption"] / info["max_pv_consumption"])
+                mastersocs.append(info["battery_cont"])
+                masterrewards.append(reward)
 
 
 
-            # [optional] evaluate
-            if episode > warmup and episode % validate_every == 0 and validate_every > 0:
-                if countsampleepisodes < numsampleepisodes:
-                    sampleepisodes.append((eptimes,epindices,eppvs,eploads,epsocs,epcosts,epactions))
-                    countsampleepisodes +=1
-                    eptimes = np.array([])
-                    epindices = np.array([])
-                    eppvs = np.array([])
-                    eploads = np.array([])
-                    epsocs = np.array([])
-                    epcosts = np.array([])
-                    epactions = np.array([])
-                dataslice["pv_consums"] = pv_consums
-                dataslice["maxpvs"] = maxpvs
-                dataslice["socs"] = socs
-                dataslice["rewards"] = rewards
-                dataslice["costs"] = totalcosts
-                dataslices.append(dataslice)
+                # [optional] evaluate
+                if episode > warmup and episode % validate_every == 0 and validate_every > 0:
+                    if countsampleepisodes < numsampleepisodes:
+                        sampleepisodes.append((eptimes,epindices,eppvs,eploads,epsocs,epcosts,epactions))
+                        countsampleepisodes +=1
+                        eptimes = np.array([])
+                        epindices = np.array([])
+                        eppvs = np.array([])
+                        eploads = np.array([])
+                        epsocs = np.array([])
+                        epcosts = np.array([])
+                        epactions = np.array([])
+                    dataslice["pv_consums"] = pv_consums
+                    dataslice["maxpvs"] = maxpvs
+                    dataslice["socs"] = socs
+                    dataslice["rewards"] = rewards
+                    dataslice["costs"] = totalcosts
+                    dataslices.append(dataslice)
                 
-                policy = lambda x: agent.select_action(x, decay_epsilon=False)
-                validate_reward, testrewards = evaluate(env, policy, stats=dataslice, debug=True, save=True)
-                if debug: prYellow('[Evaluate] Step_{:07d}: mean_reward:{}'.format(step, validate_reward))
+                    policy = lambda x: agent.select_action(x, decay_epsilon=False)
+                    validate_reward, testrewards = evaluate(env, policy, stats=dataslice, debug=True, save=True)
+                    if debug: prYellow('[Evaluate] Step_{:07d}: mean_reward:{}'.format(step, validate_reward))
                 
-                pv_consums, maxpvs, socs, rewards, totalcosts, dataslice = [], [], [], [], [], {}
+                    pv_consums, maxpvs, socs, rewards, totalcosts, dataslice = [], [], [], [], [], {}
 
-            # reset
-            episode_steps = 0
-            episode_reward = 0.
-            episode += 1
-            observation = env.reset(seed=seed)
-            agent.reset(observation)
+                # reset
+                episode_steps = 0
+                episode_reward = 0.
+                episode += 1
+                observation = env.reset(seed=seed)
+                agent.reset(observation)
+        bar.next()
 
-    namecfg = (output, bsize, epsilon, seed)
-    path = '{}/bs{}eps{}seed{}'.format(*namecfg)
+    assert len(mastereps) == len(masterconsums)
+
+    masterData = {'episodes': mastereps, 'pvconsums': masterconsums, 'socs': mastersocs, 'rewards': masterrewards}
+        
+
+    namecfg = (output, prate, rate, tau)
+    path = '{}/lra{}lrc{}tau{}'.format(*namecfg)
     if not os.path.exists(path):
         os.makedirs(path)
     plotsampleepisodeslong(sampleepisodes, path, loadscaling)
-    save_results_with_data(testrewards, dataslices, namecfg, '{}/validate_slices_inside'.format(path), interval=validate_every)
+    save_results_with_data(testrewards, dataslices, namecfg, path, interval=validate_every)
  #   evaluate.save_results()
+    return masterData
+
 
 def save_results_with_data(testrewards, dataslices, namecfg, fn, interval=None):
-        output, bsize, epsilon, seed = namecfg    
+        output, prate, rate, tau = namecfg    
 
 
         yrew = np.mean(testrewards, axis=0)
@@ -170,15 +190,15 @@ def save_results_with_data(testrewards, dataslices, namecfg, fn, interval=None):
         fig, ax = plt.subplots(1, 1, figsize=(6, 5))
         plt.xlabel('Timestep')
         plt.ylabel('Average Reward')
-        plt.title('epsilon: {}, batch size: {}, seed: {}'.format(epsilon, bsize, seed))
-        ax.errorbar(x, yrew, yerr=errorrew, fmt='-ko')
-        ax.errorbar(x, yrewards, yerr=errorrewards, fmt='-ro')
-        ax.errorbar(x, ycosts, yerr=errorcosts, fmt='-go')
-        ax.errorbar(x, ysocs, yerr=errorsocs, fmt='-bo')
-        ax.errorbar(x, yconsums, yerr=errorconsum, fmt='-co')
-        ax.errorbar(x, ymaxpvs, yerr=errormaxpv, fmt='c.')
+        plt.title('lr policy: {}, lr q: {}, tau: {}'.format(prate, rate, tau))
+  #      ax.errorbar(x, yrew, fmt='-ko')
+        ax.errorbar(x, yrewards, fmt='-ro')
+        ax.errorbar(x, ycosts, fmt='-go')
+        ax.errorbar(x, ysocs, fmt='-bo')
+        ax.errorbar(x, yconsums, fmt='-co')
+        ax.errorbar(x, ymaxpvs, fmt='c.')
         
-        ax.legend(['test av reward','interval av reward','interval av total costs', 'interval av SoCs','interval av pv consumption','interval av max pv consum'])
+        ax.legend(['interval av reward','interval av total costs', 'interval av SoCs','interval av pv consumption','interval av max pv consum'], loc='lower right')
 
     #    ax.plot(x, ymaxpvs[None, :])
         plt.savefig(fn+'.png')
@@ -272,7 +292,7 @@ def test(num_episodes, agent, env, evaluate, model_path, visualize=False, debug=
         if debug: prYellow('[Evaluate] #{}: mean_reward:{}'.format(i, validate_reward))
 
 
-def main(mode='', train_eps=0, bsize=64, epsilon=50000, validate_eps=20, validate_every=1000, seed=1, warmup=0, saveload='default', loadscaling=None, tolerance=0.3):
+def main(mode='', train_eps=0, bsize=64, epsilon=50000, distanceTargetReward=False, infeascontrol=False, validate_eps=20, validate_every=1000, seed=1, warmup=0, saveload='default', loadscaling=None, tolerance=0.3,prate=None, rate=None, tau=None):
 
     parser = argparse.ArgumentParser(description='PyTorch on TORCS with Multi-modal')
 
@@ -305,9 +325,9 @@ def main(mode='', train_eps=0, bsize=64, epsilon=50000, validate_eps=20, validat
     args = parser.parse_args()
    # args.output = get_output_folder(args.output, args.env)
     if saveload == 'default':
-        args.saveload = 'output/{}-rundef'.format(args.env)
+        args.saveload = 'output/master/{}-rundef'.format(args.env)
     else: 
-        args.saveload = 'output/{}-{}'.format(args.env,saveload)
+        args.saveload = 'output/master/{}'.format(saveload)
     args.mode = mode
     args.train_iter = train_eps + warmup
     args.bsize=bsize
@@ -317,21 +337,24 @@ def main(mode='', train_eps=0, bsize=64, epsilon=50000, validate_eps=20, validat
     args.seed = seed
     args.warmup = warmup - 1
     num_sample_eps = 6
+    args.rate = rate
+    args.prate = prate
+    args.tau = tau
 
     
     #env = NormalizedEnv(gym.make(args.env))
 
     cfg = { 'solar_scaling_factor' : loadscaling,
-          'load_scaling_factor' : loadscaling}
+          'load_scaling_factor' : loadscaling,
+          'infeasible_control_penalty': infeascontrol}
   #  env = gym.make(args.env, cfg)
     env = SolarBatteryHouseCoreEnv(cfg)
   #  env = wrapperPartial_newRewardNoHindsight(env)
-    env = NewBaseEnvWrapper(env, tolerance=tolerance)
+    env = NewBaseEnvWrapper(env, tolerance=tolerance,distanceTargetReward=distanceTargetReward)
     print(env.cfg.solar_scaling_factor)
 
     if args.seed > 0:
         np.random.seed(args.seed)
-        env.seed(args.seed)
 
     num_states = env.observation_space.shape[0]
     print("num states: " + str(num_states))
@@ -340,17 +363,17 @@ def main(mode='', train_eps=0, bsize=64, epsilon=50000, validate_eps=20, validat
     agent = DDPG(num_states, num_actions, args)
     evaluate = Evaluator(args.validate_episodes, interval=args.validate_every, save_path=args.saveload, args=args)
 
+    returnvalue = None
 
     if args.mode == 'train':
-        train(args.train_iter, agent, env, evaluate, args.validate_every, args.saveload, 
+        returnvalue = train(args.train_iter, agent, env, evaluate, args.validate_every, args.saveload, prate=prate, rate=rate, tau=tau, 
               warmup=args.warmup, num_sample_eps = num_sample_eps, debug=args.debug, bsize=bsize, epsilon=epsilon, seed = args.seed, loadscaling=loadscaling)
-
     elif args.mode == 'test':
         test(args.validate_episodes, agent, env, evaluate, args.saveload,
              visualize=False, debug=args.debug)
-
     else:
         raise RuntimeError('undefined mode {}'.format(args.mode))
+    return returnvalue
 
 
 if __name__ == '__main__':

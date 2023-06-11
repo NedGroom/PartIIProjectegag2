@@ -20,9 +20,15 @@ class NewBaseEnvWrapper(gym.Wrapper):
     pmax = 3700     # pmax = 1, for relative power action type
 
 
-    def __init__(self, env, tolerance=0.3):
+    def __init__(self, env, seed=None, tolerance=0.3, distanceTargetReward=False):
 
         super().__init__(env)
+
+        _np_random, seed = gym.utils.seeding.np_random(seed)
+    #    np.random.seed(seed)
+        self.seed=seed
+        self.generator = _np_random
+        self.distanceTargetReward = distanceTargetReward
 
         self.solar.time_step -= 1
         self.load.time_step -= 1
@@ -106,6 +112,15 @@ class NewBaseEnvWrapper(gym.Wrapper):
         action = self.get_power_from_action(action)
         attempted_action = copy.copy(action)
 
+
+        if cum_pv_gen and self.distanceTargetReward: 
+            pvconsum = self.my_pv_consumption / self.max_pv_consumption
+            print("pvconsum: ", pvconsum)
+            oldPosition = (self.battery.b/self.cfg.paper_battery_capacity, pvconsum)
+            oldDistance = pow( (1-oldPosition[0])**2 + (1-oldPosition[1])**2 , 0.5)
+        else:
+            oldDistance = 1.414
+
         
         load_overflow_from_solar = max(0, load - pv_generation)
         solar_load_usage = min(pv_generation, load)
@@ -129,7 +144,7 @@ class NewBaseEnvWrapper(gym.Wrapper):
 
         self.logger.debug("step - net load: %s", net_load)
 
-        assert (pv_generation - solar_used  >= -0.000005 * self.cfg.solar_scaling_factor)
+        assert (pv_generation/self.cfg.solar_scaling_factor - solar_used /self.cfg.load_scaling_factor >= -0.005)
         cum_load += load
         cum_pv_gen += pv_generation
         cum_pv_used += solar_used
@@ -137,39 +152,55 @@ class NewBaseEnvWrapper(gym.Wrapper):
         cum_LmaxPV += solar_load_usage
         cum_cost += cost
 
-        if cum_pv_gen: 
-            self.my_pv_consumption = cum_pv_used / cum_pv_gen
-            self.max_pv_consumption = (cum_LmaxPV + cum_EVmaxPV) / cum_pv_gen
+        
+        self.my_pv_consumption = cum_pv_used / cum_pv_gen
+        self.max_pv_consumption = (cum_LmaxPV + cum_EVmaxPV) / cum_pv_gen
         enough_pv_consumption = bool(self.max_pv_consumption - self.my_pv_consumption <= self.cfg.epsPV)
         enough_SOC = bool(1 - self.battery.b/self.cfg.paper_battery_capacity <= self.cfg.epsSOC)
 
-        ## See if terminated, and calculate reward
+
         terminated = bool(self.time_til_departure == 1)
-        if (terminated):
-            self.episode += 1
-            self.total_cost = cum_cost
-            
-            if enough_pv_consumption and enough_SOC:
-                reward = 1
-                self.total_rewards += 1
-            else: 
+
+        if self.distanceTargetReward:
+            newPosition = (self.battery.b/self.cfg.paper_battery_capacity, self.my_pv_consumption / self.max_pv_consumption)
+            if terminated:
+                self.episode += 1
+                self.total_cost = cum_cost
+            newDistance = pow( (1-newPosition[0])**2 + (1-newPosition[1])**2 , 0.5)
+            print("new :", newDistance)
+            print("old :", oldDistance)
+            if not math.isnan(newDistance):
+                reward =  oldDistance - newDistance
+            else:
                 reward = 0
-            report = [ "Day: " + str(self.episode),
-                "Data left off: "+str(self.save_data_timestep_on_reset) + ". Data new start: " + str(self.new_start) + "." ,
-                "Car came home yesterday " + str(self.ep_start) + " , left " + str(self.ep_end) + " today, ep length: " + str(24-self.ep_start+self.ep_end),
-                "Max consumption: " + str(self.max_pv_consumption) + ", PV consumption: " + str(self.my_pv_consumption) + " %. Capacity: " + str(self.battery.b/self.cfg.paper_battery_capacity) + ". Total cost: " + str(self.total_cost),
-                "Reward: " + str(reward)
-            ]
-            print(report)
+            self.total_rewards += reward
         else:
-            reward = 0
-        assert self.time_til_departure >= 0
+            ## See if terminated, and calculate reward
+            if (terminated):
+                self.episode += 1
+                self.total_cost = cum_cost
+            
+                if enough_pv_consumption and enough_SOC:
+                    reward = 1
+                    self.total_rewards += 1
+                else: 
+                    reward = 0
+                report = [ "Day: " + str(self.episode),
+                    "Data left off: "+str(self.save_data_timestep_on_reset) + ". Data new start: " + str(self.new_start) + "." ,
+                    "Car came home yesterday " + str(self.ep_start) + " , left " + str(self.ep_end) + " today, ep length: " + str(24-self.ep_start+self.ep_end),
+                    "Max consumption: " + str(self.max_pv_consumption) + ", PV consumption: " + str(self.my_pv_consumption) + " %. Capacity: " + str(self.battery.b/self.cfg.paper_battery_capacity) + ". Total cost: " + str(self.total_cost),
+                    "Reward: " + str(reward)
+                ]
+             #   print(report)
+            else:
+                reward = 0
+            assert self.time_til_departure >= 0
 
 
         # Add impossible control penalty to cost
         info["power_diff"] = np.abs(realcharge_action - float(attempted_action))
         if self.cfg.infeasible_control_penalty:
-            reward -= info["power_diff"]
+            reward -= info["power_diff"] / 3700
             self.logger.debug(
                 "step - cost: %6.3f, power_diff: %6.3f", cost, info["power_diff"]
             )
@@ -293,11 +324,12 @@ class NewBaseEnvWrapper(gym.Wrapper):
         if self.time_step.size == 0 or self.time_step < np.array([7]) or self.time_step > np.array([19]): # this means cannot be a timeofdeparture
             self.time_step = np.array([0])     # so that time skipped is correct from data starting at 0
             self.data_timestep_on_reset -= self.data_timestep_on_reset % 24
-            time_of_arrival = random.randint(np.array([20]) + 1, 23) # declare initial car left house at 8pm to show not reached this point by stepping
+          #  time_of_arrival = random.randint(np.array([20]) + 1, 23) # declare initial car left house at 8pm to show not reached this point by stepping
+            time_of_arrival = self.generator.integers(low=20+1,high=23+1,size=1)[0] # declare initial car left house at 8pm to show not reached this point by stepping
         else:
             assert self.time_step > np.array([6])
             assert self.time_step < np.array([20])  # should have called reset when car left the house between 7am-7pm
-            time_of_arrival = random.randint(self.time_step + 1, 23)
+            time_of_arrival = self.generator.integers(low=self.time_step+1,high=23+1, size=1)[0]
         time_skipped = time_of_arrival - self.time_step
         self.time_step = np.array([time_of_arrival])
             
@@ -309,18 +341,23 @@ class NewBaseEnvWrapper(gym.Wrapper):
         
     #    self.load.fix_start(start=self.new_start)
     #    self.solar.fix_start(start=self.new_start)
-        self.load.reset()       ## since self.cfg.data_start_index=0, the load.reset() will always start from 0 
-        self.solar.reset()
-        self.load.time_step = self.new_start
-        self.solar.time_step = self.new_start
+
+        random_reset_start = self.generator.integers(low=0, high=self.data_len // 24, size=1)[0] * 24
+
+        self.load.reset(start=random_reset_start)       ## since self.cfg.data_start_index=0, the load.reset() will always start from 0 
+        self.solar.reset(start=random_reset_start)
+        self.load.time_step = self.new_start%24
+        self.solar.time_step = self.new_start%24
 
 
         ## CAR has just arrived at home in the evening, sample battery content and travel plans
 
-        self.SoC_on_arrival = random.uniform(0.2,0.5) * self.cfg.paper_battery_capacity  # according to paper
+    #    self.SoC_on_arrival = random.uniform(0.2,0.5) * self.cfg.paper_battery_capacity  # according to paper
+        self.SoC_on_arrival = (self.generator.random()*0.3 + 0.2) * self.cfg.paper_battery_capacity  # according to paper
         self.battery.b = np.array([self.SoC_on_arrival], dtype=np.float32)
 
-        time_of_departure = np.array([random.randint(7,19)]) #necessarily the next day
+     #   time_of_departure = np.array([random.randint(7,19)]) #necessarily the next day
+        time_of_departure = np.array([self.generator.integers(7,19+1,1)[0]]) #necessarily the next day
         self.ep_end = time_of_departure
         if self.time_step < 24:
             time_til_departure = 24 - self.time_step + time_of_departure
@@ -342,7 +379,7 @@ class NewBaseEnvWrapper(gym.Wrapper):
             "load": np.array([load], dtype=self.cfg.dtype),
             "pv_gen": np.array([pv_gen], dtype=self.cfg.dtype),
             "battery_cont": np.array(
-                self.battery.get_energy_content(), dtype=self.cfg.dtype
+                self.battery.b, dtype=self.cfg.dtype
             ),
             "time_step": self.time_step,
             "time_step_cont": np.array([self.time_step], dtype=self.cfg.dtype),

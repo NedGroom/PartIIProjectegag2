@@ -4,6 +4,7 @@ import sys
 import click
 import argparse
 import time
+from gym.spaces import Dict, Box
 import matplotlib.pyplot as plt
 import math
 import gym
@@ -11,12 +12,12 @@ import gym
 import bauwerk
 #from wrapperParaAgent_newRewardNoHindsight import wrapperPara_newRewardNoHindsight
 from bauwerk.envs.solar_battery_house import SolarBatteryHouseCoreEnv
-from parametricOverBase import ParametricOverBase
+from .parametricOverBase import ParametricOverBase
 from newBaseEnvWrapper import NewBaseEnvWrapper
 
 import numpy as np
-from agents.pdqn import PDQNAgent
-from common.wrappers import ScaledStateWrapper, ScaledParameterisedActionWrapper
+from .agents.pdqn import PDQNAgent
+from .common.wrappers import ScaledStateWrapper, ScaledParameterisedActionWrapper
 
 import click
 import ast
@@ -35,9 +36,9 @@ class ClickPythonLiteralOption(click.Option):
 
 
 def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loadscaling=5,num_sample_eps=4, evaluation_episodes:int = 30, batch_size:int = 32, gamma:float=0.99, inverting_gradients:bool=True, initial_memory_threshold:int = 500,
-        use_ornstein_noise:bool=True, replay_memory_size:int = 50000, epsilon_steps:int = 1000, tau_actor:float=0.01, tau_actor_param:float=0.001, learning_rate_actor:float=0.0001,
+        scaleState:bool=False,use_ornstein_noise:bool=True, replay_memory_size:int = 50000, epsilon_steps:int = 1000, tau_actor:float=0.001, tau_actor_param:float=0.001, learning_rate_actor:float=0.0001,
         learning_rate_actor_param:float=0.001, epsilon_final:float=0.01, zero_index_gradients:bool=False, initialise_params:bool=True, scale_actions:bool=True,
-        clip_grad:float=10., indexed:bool=True, layers='[128,]', multipass:bool=False, weighted:bool=False, average:bool=False, random_weighted:bool=False, render_freq:int = 100,
+        evalseed=123, clip_grad:float=10., indexed:bool=True, layers='[128,]', multipass:bool=False, weighted:bool=False, average:bool=False, random_weighted:bool=False, render_freq:int = 100,
         save_freq:int = 0, save_dir:str="results/platform", save_frames:bool=False, visualise:bool=False, action_input_layer:int = 0, title:str="PDDQN", tolerance=0.3):
 
    
@@ -60,7 +61,7 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
     env = SolarBatteryHouseCoreEnv(cfg)
     #env = wrapperPara_newRewardNoHindsight(env)
     env = NewBaseEnvWrapper(env, tolerance=tolerance)
-    env = ParametricOverBase(env)
+    env = ParametricOverBase(env, scalingstate = scaleState)
 
   #  print("pre-scaling Observation space: ")
   #  print(env.observation_space)
@@ -69,7 +70,8 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
    
     initial_params_ = [0.1, 0.7]
 
-  #  env = ScaledStateWrapper(env)    # why do i need to scale the observation space
+    if scaleState:
+        env = ScaledStateWrapper(env)    # why do i need to scale the observation space
    # env = PlatformFlattenedActionWrapper(env)
 #    if scale_actions:
  #       env = ScaledParameterisedActionWrapper(env)
@@ -82,14 +84,18 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
     print(env.observation_space)
     print("Action space: ")
     print(env.action_space)
-
-
+    print(type(env.observation_space.high))
+    low = np.concatenate([env.observation_space.low, [0,0]])
+    high = np.concatenate([env.observation_space.high, [1,1]])
+    t = env.observation_space.dtype
+    inputObsSpace = Box(low, high, dtype = t)
+    print("input obs space: ", inputObsSpace)
 
     agent_class = PDQNAgent
 
     print("initialise agent")
     agent = agent_class(
-                       env.observation_space, env.action_space,
+                       inputObsSpace, env.action_space,
                        batch_size=batch_size,
                        learning_rate_actor=learning_rate_actor,
                        learning_rate_actor_param=learning_rate_actor_param,
@@ -119,8 +125,8 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
         print("action space.spaces")
         print(env.action_space.spaces)
         print("obs space.shape[0]")
-        print(env.observation_space.shape[0])
-        initial_weights = np.zeros((env.action_space.spaces[0].n, env.observation_space.shape[0]))
+        print(inputObsSpace.shape[0])
+        initial_weights = np.zeros((env.action_space.spaces[0].n, inputObsSpace.shape[0]))
         initial_bias = np.zeros(env.action_space.spaces[0].n)
         for a in range(env.action_space.spaces[0].n):
             initial_bias[a] = initial_params_[a]
@@ -151,17 +157,25 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
     # agent.epsilon = 0.
     # agent.noise = None
 
+    mastereps, mastersocs, masterconsums, masterrewards = [], [], [], []
+
+
     desiredGoal = [0,0]
     achievedGoal = None
 
     for i in range(episodes):
         if save_freq > 0 and save_dir and i % save_freq == 0:
             agent.save_models(os.path.join(save_dir, str(i)))
-
-        obs = env.reset(seed=seed)
+        
+        if scaleState:
+            obs, _ = env.reset(seed=seed)
+        else:
+            obs = env.reset(seed=seed)
 
    #     state = [i[0] for i in obs]
         state = np.append(obs, desiredGoal)
+  #      if achievedGoal is not None: print(achievedGoal.squeeze())
+  #      print(state)
         state = np.array(state, dtype=np.float32, copy=False)
      #   print(obs)
         
@@ -218,11 +232,11 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
 
         returns.append(episode_reward)
         total_reward += episode_reward
-        if i % 100 == 0: # 100 episodes
-            print(str(i))
-            print("Total average return: " + str(total_reward / (i + 1)))
-            print("Average return over last 100: " + str(np.array(returns[-100:]).mean()))
-            print('{0:5s} R:{1:.4f} r100:{2:.4f}'.format(str(i), total_reward / (i + 1), np.array(returns[-100:]).mean()))
+   #     if i % 100 == 0: # 100 episodes
+   #         print(str(i))
+   #         print("Total average return: " + str(total_reward / (i + 1)))
+   #         print("Average return over last 100: " + str(np.array(returns[-100:]).mean()))
+   #         print('{0:5s} R:{1:.4f} r100:{2:.4f}'.format(str(i), total_reward / (i + 1), np.array(returns[-100:]).mean()))
 
         ##datasampling
         pv_consums.append(info["my_pv_consumption"] ) # for percent
@@ -231,8 +245,14 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
         rewards.append(reward)
         totalcosts.append(info["total_cost"] / 1000)
 
+        mastereps.append(i)
+        masterconsums.append(info["my_pv_consumption"] / info["max_pv_consumption"])
+        mastersocs.append(info["battery_cont"])
+        masterrewards.append(reward)
+
+
         if i % measure_step == 0:
-            performance.append(evaluate(env, agent, evaluation_episodes))
+            performance.append(evaluate(env, agent, evaluation_episodes, scaleState, evalseed))
             if countsampleepisodes < numsampleepisodes:
                 sampleepisodes.append((eptimes,epindices,eppvs,eploads,epsocs,epcosts,epactions))
                 countsampleepisodes +=1
@@ -244,16 +264,16 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
                 dataslice["rewards"] = rewards
                 dataslice["costs"] = totalcosts
                 dataslices.append(dataslice)
-                pv_consums, maxpvs, socs, rewards, dataslice = [], [], [], [], {}
+                pv_consums, maxpvs, socs, rewards, dataslice, totalcosts = [], [], [], [], {}, []
 
     end_time = time.time()
-    print("Took %.2f seconds" % (end_time - start_time))
+    print("pdqn Took %.2f seconds" % (end_time - start_time))
     env.close()
     if save_freq > 0 and save_dir:
         agent.save_models(os.path.join(save_dir, str(i)))
 
     returns = env.total_rewards 
-    print("Ave. return =", (returns) / episodes )
+  #  print("Ave. return =", (returns) / episodes )
     
     
     np.save(os.path.join(dir, title + "{}".format(str(seed))),returns)
@@ -261,20 +281,29 @@ def run(seed:int = 4, episodes:int = 100, saveload='default',measure_step=30,loa
     if evaluation_episodes > 0:
         print("Evaluating agent over {} episodes".format(evaluation_episodes))
         
-        evaluation_returns = evaluate(env, agent, evaluation_episodes)
+        evaluation_returns = evaluate(env, agent, evaluation_episodes, scaleState, evalseed)
         print("Ave. evaluation return =", sum(evaluation_returns) / len(evaluation_returns))
         np.save(os.path.join(dir, title + "{}e".format(str(seed))), evaluation_returns)
 
 
 
     if saveload == 'default':
-        output = 'output/{}-rundef'.format(env_name)
+        output = 'output/masterhind/{}'.format(env_name)
     else: 
-        output = 'output/{}-{}'.format(env_name,saveload)
-    namecfg = (output, batch_size, learning_rate_actor_param, seed)
-    path = '{}/bs{}lr{}seed{}'.format(*namecfg)
+        output = 'output/masterhind/{}'.format(saveload)
+    namecfg = (output, learning_rate_actor, learning_rate_actor_param, tau_actor)
+    path = '{}/lra{}lrp{}tau{}'.format(*namecfg)
     plotsampleepisodeslong(sampleepisodes, path, loadscaling)
-    plotperformance(performance, dataslices, namecfg, '{}validate_slices_inside'.format(path), interval=measure_step)
+
+    if not os.path.exists(path):
+        os.makedirs(path)
+    plotperformance(performance, dataslices, namecfg, path, interval=measure_step)
+
+
+    masterData = {'episodes': mastereps, 'pvconsums': masterconsums, 'socs': mastersocs, 'rewards': masterrewards}
+
+    return masterData
+
 
 
 def replayEpisode(steps, agent, newGoal, tolerance):
@@ -296,7 +325,7 @@ def replayEpisode(steps, agent, newGoal, tolerance):
 
 
 def plotperformance(performance, dataslices, namecfg, fn, interval=None):
-    output, bsize, epsilon, seed = namecfg    
+    output, learning_rate_actor, learning_rate_actor_param, tau_actor = namecfg    
 
     print(performance)
     #yrew = np.mean(testrewards, axis=0)
@@ -329,8 +358,8 @@ def plotperformance(performance, dataslices, namecfg, fn, interval=None):
     fig, ax = plt.subplots(1, 1, figsize=(6, 5))
     plt.xlabel('Timestep')
     plt.ylabel('Average Reward')
-    plt.title('epsilon: {}, batch size: {}, seed: {}'.format(epsilon, bsize, seed))
-    ax.errorbar(x, yrew, fmt='-ko')
+    plt.title('lr actor: {}, lr actor param: {}, tau: {}'.format(learning_rate_actor, learning_rate_actor_param, tau_actor))
+ #   ax.errorbar(x, yrew, fmt='-ko')
 
     ax.errorbar(xless, yrewards, fmt='-ro')
     ax.errorbar(xless, ycosts,  fmt='-go')
@@ -338,7 +367,7 @@ def plotperformance(performance, dataslices, namecfg, fn, interval=None):
     ax.errorbar(xless, yconsums, fmt='-co')
     ax.errorbar(xless, ymaxpvs,  fmt='c.')
         
-    ax.legend(['test av reward','interval av reward','interval av total costs', 'interval av SoCs','interval av pv consumption','interval av max pv consum'])
+    ax.legend(['interval av reward','interval av total costs', 'interval av SoCs','interval av pv consumption','interval av max pv consum'], loc='lower right')
 
 
     plt.savefig(fn+'.png')
@@ -410,7 +439,7 @@ def pad_action(act, act_param):
     return (act, params[0], params[1])
 
 
-def evaluate(env, agent, episodes=1000):
+def evaluate(env, agent, episodes=60, scaleState=False, seed=123):
     epsf = agent.epsilon_final
     eps = agent.epsilon
     noise = agent.noise
@@ -422,7 +451,10 @@ def evaluate(env, agent, episodes=1000):
     returns = []
     timesteps = []
     for _ in range(episodes):
-        state = env.reset()
+        if scaleState:
+            state, _ = env.reset(seed=seed)
+        else:
+            state = env.reset(seed=seed)
         terminal = False
         t = 0
         total_reward = 0.
@@ -435,7 +467,6 @@ def evaluate(env, agent, episodes=1000):
             action = pad_action(act, act_param)
     #        (state, _), reward, terminal,_, info = env.step(action)
             state, reward, terminal,_, info = env.step(action)
-            achievedgoal = info["achieved_goal"] 
             total_reward += reward
         timesteps.append(t)
         returns.append(total_reward)

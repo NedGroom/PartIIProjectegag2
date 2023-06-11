@@ -36,6 +36,7 @@ class ScaledStateWrapper(gym.ObservationWrapper):
 
     def scale_state(self, state):
         state = 2. * (state - self.low) / (self.high - self.low) - 1.
+ #       print("state, " , state)
         return state
 
     def _unscale_state(self, scaled_state):
@@ -43,13 +44,30 @@ class ScaledStateWrapper(gym.ObservationWrapper):
         return state
 
     def observation(self, obs):
+  #      print("obs, " , obs)
         if self.compound:
-            state, steps = obs
-            ret = (self.scale_state(state), steps)
+            state = obs
+            ret = self.scale_state(state)
         else:
             ret = self.scale_state(obs)
         return ret
 
+class PlatformFlattenedActionWrapper(gym.ActionWrapper):
+    """
+    Changes the format of the parameterised action space to conform to that of Goal-v0 and Platform-v0
+    """
+    def __init__(self, env):
+        super(PlatformFlattenedActionWrapper, self).__init__(env)
+        old_as = env.action_space
+        num_actions = old_as.spaces[0].n
+        self.action_space = gym.spaces.Tuple((
+            old_as.spaces[0],  # actions
+            *(gym.spaces.Box(old_as.spaces[1].spaces[i].low, old_as.spaces[1].spaces[i].high, dtype=np.float32)
+              for i in range(0, num_actions))
+        ))
+
+    def action(self, action):
+        return action
 
 class TimestepWrapper(gym.Wrapper):
     """
@@ -104,7 +122,7 @@ class ScaledParameterisedActionWrapper(gym.ActionWrapper):
         :return:
         """
         action = copy.deepcopy(action)
-        p = action[0]
+        p = action[0]+1
         action[1][p] = self.range[p] * (action[1][p] + 1) / 2. + self.low[p]
         return action
 

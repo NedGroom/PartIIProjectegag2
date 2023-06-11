@@ -15,7 +15,7 @@ class DiscreteActions(gym.ActionWrapper):
         self.disc_to_cont = disc_to_cont
         self.action_space = Discrete(21)
     def action(self, act):
-        return self.disc_to_cont(act,self.pmax)
+        return [self.disc_to_cont(act,self.pmax)]
 
 
 def mydisc_to_cont_fun(action,pmax):
@@ -24,7 +24,7 @@ def mydisc_to_cont_fun(action,pmax):
         action = -10
     if action > 10:
         action = 10
-    return  action/10 * pmax
+    return  action/10 #* pmax
 
 
 def mydisc_to_cont_fun_array(action,pmax):

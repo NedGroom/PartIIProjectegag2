@@ -11,10 +11,12 @@ import collections
 from torch.optim.lr_scheduler import StepLR
 import matplotlib.pyplot as plt
 import math
-from wrapperDiscretepg_newRewardNoHindsight import wrapperDiscrete_newRewardNoHindsight
+#from wrapperDiscretepg_newRewardNoHindsight import wrapperDiscrete_newRewardNoHindsight
 from bauwerk.envs.solar_battery_house import SolarBatteryHouseCoreEnv
 from newBaseEnvWrapper import NewBaseEnvWrapper
-from discreteOverBase import DiscreteOverBase
+from .discreteOverBase import DiscreteOverBase
+
+from progress.bar import Bar
 
 
 
@@ -168,9 +170,9 @@ def update_parameters(current_model, target_model):
     target_model.load_state_dict(current_model.state_dict())
 
 
-def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0.01, update_step=10, batch_size=1, update_repeats=50,
+def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.998, eps_min=0.01, update_step=10, batch_size=1, update_repeats=50,
          num_episodes=401, seed=42, max_memory_size=500000, lr_gamma=0.9, lr_step=32, measure_step=100, num_sample_eps=6, saveload='default',
-         measure_repeats=5, hidden_dim=64, env_name='bauwerk/SolarBatteryHouse-v0', cnn=False, horizon=np.inf, render=True, render_step=50, loadscaling=1, tolerance=0.3):
+         infeascontrol=False, distanceTargetReward=False, measure_repeats=5, hidden_dim=64, env_name='bauwerk/SolarBatteryHouse-v0', cnn=False, horizon=np.inf, render=True, render_step=50, loadscaling=1, tolerance=0.3):
     """
     :param gamma: reward discount factor
     :param lr: learning rate for the Q-Network
@@ -200,13 +202,14 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
     #env = gym.make(env_name)
     
     cfg = { 'solar_scaling_factor' : loadscaling,
-          'load_scaling_factor' : loadscaling}
+          'load_scaling_factor' : loadscaling,
+          'infeasible_control_penalty': infeascontrol}
     env = SolarBatteryHouseCoreEnv(cfg)
   #  env = wrapperDiscrete_newRewardNoHindsight(env)
-    env = NewBaseEnvWrapper(env, tolerance=tolerance)
+    env = NewBaseEnvWrapper(env, tolerance=tolerance, seed=seed, distanceTargetReward=distanceTargetReward)
     env = DiscreteOverBase(env)
     torch.manual_seed(seed)
-    env.seed(seed)
+   # env.seed(seed)
 
 
     dataslice={}
@@ -243,90 +246,104 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
     memory = Memory(max_memory_size)
     performance = []
 
-    for episode in range(num_episodes):
-        # display the performance
-        if episode % measure_step == 0:
-            performance.append([episode, evaluate(Q_1, env, measure_repeats)])
-            print("Episode: ", episode)
-            print("rewards: ", performance[-1][1])
-            print("lr: ", scheduler.get_lr()[0])
-            print("eps: ", eps)
+
+    mastereps, mastersocs, masterconsums, masterrewards = [], [], [], []
+
+
+    with Bar('DDQN...') as bar:
+        for episode in range(num_episodes):
+            # display the performance
+            if episode % measure_step == 0:
+                performance.append([episode, evaluate(Q_1, env, measure_repeats)])
+                print("Episode: ", episode)
+                print("rewards: ", performance[-1][1])
+                print("lr: ", scheduler.get_lr()[0])
+                print("eps: ", eps)
             
 
-        state = env.reset()
+            state = env.reset()
 
-        memory.state.append(state)
+            memory.state.append(state)
 
-        done = False
-        i = 0
-        while not done and i < horizon:
-            assert(env.time_step == env.load.time_step%24)
-            i += 1
-            old_state = state
-            action = select_action(Q_2, env, state, eps)
-            state, reward, done,truncated, info = env.step(action)
+            done = False
+            i = 0
+            while not done and i < horizon:
+                assert(env.time_step == env.load.time_step%24)
+                i += 1
+                old_state = state
+                action = select_action(Q_2, env, state, eps)
+                state, reward, done,truncated, info = env.step(action)
 
-            if episode % measure_step == 0 and countsampleepisodes < numsampleepisodes:
-                eptimes = np.append(eptimes,info["time_step"])
-                epindices = np.append(epindices, info["data_index"])
-                eppvs = np.append(eppvs,info["pv_gen"])
-                eploads = np.append(eploads,info["load"])
-                epsocs = np.append(epsocs,info["battery_cont"])
-                epcosts = np.append(epcosts,info["cum_cost"])
-                epactions = np.append(epactions, info["realcharge_action"])
+                if episode % measure_step == 0 and countsampleepisodes < numsampleepisodes:
+                    eptimes = np.append(eptimes,info["time_step"])
+                    epindices = np.append(epindices, info["data_index"])
+                    eppvs = np.append(eppvs,info["pv_gen"])
+                    eploads = np.append(eploads,info["load"])
+                    epsocs = np.append(epsocs,info["battery_cont"])
+                    epcosts = np.append(epcosts,info["cum_cost"])
+                    epactions = np.append(epactions, info["realcharge_action"])
 
-            # save state, action, reward sequence
-            memory.update(state, action, reward, done)
+                # save state, action, reward sequence
+                memory.update(state, action, reward, done)
 
-        done = True
-        # just done
-        pv_consums.append(info["my_pv_consumption"] ) # for percent
-        maxpvs.append(info["max_pv_consumption"] ) # for percent
-        socs.append(info["battery_cont"])
-        rewards.append(reward)
-        totalcosts.append(info["total_cost"] / 1000)
+            done = True
+            # just done
+            pv_consums.append(info["my_pv_consumption"] ) # for percent
+            maxpvs.append(info["max_pv_consumption"] ) # for percent
+            socs.append(info["battery_cont"])
+            rewards.append(reward)
+            totalcosts.append(info["total_cost"] / 1000)
 
-        if episode % measure_step == 0:
-            if countsampleepisodes < numsampleepisodes:
-                sampleepisodes.append((eptimes,epindices,eppvs,eploads,epsocs,epcosts,epactions))
-                countsampleepisodes +=1
-                eptimes,epindices,eppvs,eploads,epsocs,epcosts,epactions = np.array([]),np.array([]),np.array([]),np.array([]),np.array([]),np.array([]),np.array([])
-            if episode != 0:
-                dataslice["pv_consums"] = pv_consums
-                dataslice["maxpvs"] = maxpvs
-                dataslice["socs"] = socs
-                dataslice["rewards"] = rewards
-                dataslice["costs"] = totalcosts
-                dataslices.append(dataslice)
-                pv_consums, maxpvs, socs, rewards, dataslice = [], [], [], [], {}
+            mastereps.append(episode)
+            masterconsums.append(info["my_pv_consumption"] / info["max_pv_consumption"])
+            mastersocs.append(info["battery_cont"])
+            masterrewards.append(reward)
 
-        if episode >= min_episodes and episode % update_step == 0:
+            if episode % measure_step == 0:
+                if countsampleepisodes < numsampleepisodes:
+                    sampleepisodes.append((eptimes,epindices,eppvs,eploads,epsocs,epcosts,epactions))
+                    countsampleepisodes +=1
+                    eptimes,epindices,eppvs,eploads,epsocs,epcosts,epactions = np.array([]),np.array([]),np.array([]),np.array([]),np.array([]),np.array([]),np.array([])
+                if episode != 0:
+                    dataslice["pv_consums"] = pv_consums
+                    dataslice["maxpvs"] = maxpvs
+                    dataslice["socs"] = socs
+                    dataslice["rewards"] = rewards
+                    dataslice["costs"] = totalcosts
+                    dataslices.append(dataslice)
+                    pv_consums, maxpvs, socs, rewards, dataslice , totalcosts= [], [], [], [], {}, []
 
-            train(batch_size, Q_1, Q_2, optimizer, memory, gamma)
+            if episode >= min_episodes and episode % update_step == 0:
+                for i in range(update_step):
+                    train(batch_size, Q_1, Q_2, optimizer, memory, gamma)
 
-            # transfer new parameter from Q_1 to Q_2
-            update_parameters(Q_1, Q_2)
+                # transfer new parameter from Q_1 to Q_2
+                update_parameters(Q_1, Q_2)
 
             # update learning rate and eps
             scheduler.step()
             eps = max(eps*eps_decay, eps_min)
-
+        bar.next()
 
     
     if saveload == 'default':
-        output = 'output/{}-rundef'.format(env_name)
+        output = 'output/master/{}'.format(env_name)
     else: 
-        output = 'output/{}-{}'.format(env_name,saveload)
-    namecfg = (output, batch_size, lr, seed)
-    path = '{}/bs{}lr{}seed{}'.format(*namecfg)
+        output = 'output/master/{}'.format(saveload)
+    namecfg = (output, lr, update_step)
+    path = '{}/lr{}update{}'.format(*namecfg)
     plotsampleepisodeslong(sampleepisodes, path, loadscaling)
-    plotperformance(performance, dataslices, namecfg, '{}validate_slices_inside'.format(path), interval=measure_step)
+    plotperformance(performance, dataslices, namecfg, path, interval=measure_step)
 
-    return Q_1, performance
+
+    masterData = {'episodes': mastereps, 'pvconsums': masterconsums, 'socs': mastersocs, 'rewards': masterrewards}
+    return masterData, Q_1, performance
+
+
 
 
 def plotperformance(performance, dataslices, namecfg, fn, interval=None):
-    output, bsize, epsilon, seed = namecfg    
+    output, lr, update_step = namecfg    
 
     print(performance)
     #yrew = np.mean(testrewards, axis=0)
@@ -361,8 +378,8 @@ def plotperformance(performance, dataslices, namecfg, fn, interval=None):
     fig, ax = plt.subplots(1, 1, figsize=(6, 5))
     plt.xlabel('Timestep')
     plt.ylabel('Average Reward')
-    plt.title('epsilon: {}, batch size: {}, seed: {}'.format(epsilon, bsize, seed))
-    ax.errorbar(x, yrew, fmt='-ko')
+    plt.title('lr: {}, update step: {}'.format(lr, update_step))
+  #  ax.errorbar(x, yrew, fmt='-ko')
 
 
     ax.errorbar(xless, yrewards, fmt='-ro')
@@ -371,7 +388,7 @@ def plotperformance(performance, dataslices, namecfg, fn, interval=None):
     ax.errorbar(xless, yconsums, fmt='-co')
     ax.errorbar(xless, ymaxpvs,  fmt='c.')
         
-    ax.legend(['test av reward','interval av reward','interval av total costs', 'interval av SoCs','interval av pv consumption','interval av max pv consum'])
+    ax.legend(['interval av reward','interval av total costs', 'interval av SoCs','interval av pv consumption','interval av max pv consum'], loc='lower right')
 
 #    ax.plot(x, ymaxpvs[None, :])
     plt.savefig(fn+'.png')

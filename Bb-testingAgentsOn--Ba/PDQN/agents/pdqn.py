@@ -8,10 +8,10 @@ from collections import Counter
 from torch.autograd import Variable
 
 
-from agents.agent import Agent
-from agents.memory.memory import Memory
-from agents.utils import soft_update_target_network, hard_update_target_network
-from agents.utils.noise import OrnsteinUhlenbeckActionNoise
+from ..agents.agent import Agent
+from ..agents.memory.memory import Memory
+from ..agents.utils import soft_update_target_network, hard_update_target_network
+from ..agents.utils.noise import OrnsteinUhlenbeckActionNoise
 
 
 class QActor(nn.Module):

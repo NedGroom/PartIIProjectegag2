@@ -8,7 +8,7 @@ from newBaseEnvWrapper import NewBaseEnvWrapper
 from bauwerk.envs.solar_battery_house import EnvConfig, SolarBatteryHouseCoreEnv
 
 
-from util import *
+from .util import *
 
 class Evaluator(object):
 

@@ -5,10 +5,10 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 
-from model import (Actor, Critic)
-from memory import SequentialMemory
-from random_process import OrnsteinUhlenbeckProcess
-from util import *
+from .model import (Actor, Critic)
+from .memory import SequentialMemory
+from .random_process import OrnsteinUhlenbeckProcess
+from .util import *
 
 # from ipdb import set_trace as debug
 

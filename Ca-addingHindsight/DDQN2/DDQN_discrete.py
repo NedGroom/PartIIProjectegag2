@@ -1,6 +1,6 @@
 import gym
 import torch
-from gym.spaces import Dict
+from gym.spaces import Dict, Box
 import numpy as np
 import os
 import bauwerk
@@ -11,10 +11,10 @@ import collections
 from torch.optim.lr_scheduler import StepLR
 import matplotlib.pyplot as plt
 import math
-from wrapperDiscretepg_newRewardNoHindsight import wrapperDiscrete_newRewardNoHindsight
+#from wrapperDiscretepg_newRewardNoHindsight import wrapperDiscrete_newRewardNoHindsight
 from bauwerk.envs.solar_battery_house import SolarBatteryHouseCoreEnv
 from newBaseEnvWrapper import NewBaseEnvWrapper
-from discreteOverBase import DiscreteOverBase
+from .discreteOverBase import DiscreteOverBase
 
 
 """
@@ -202,7 +202,7 @@ def replayMemory(memory, newgoal, episodeLength, tolerance):
         
 
 
-def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0.01, update_step=10, batch_size=1, update_repeats=50,
+def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.998, eps_min=0.01, update_step=10, batch_size=1, update_repeats=50,
          num_episodes=401, seed=42, max_memory_size=500000, lr_gamma=0.9, lr_step=32, measure_step=100, num_sample_eps=6, saveload='default',
          measure_repeats=5, hidden_dim=64, env_name='bauwerk/SolarBatteryHouse-v0', cnn=False, horizon=np.inf, render=True, render_step=50, loadscaling=1, tolerance=0.3):
     """
@@ -257,11 +257,16 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
     countsampleepisodes = 0
     numsampleepisodes = num_sample_eps
 
+    low = np.concatenate([env.observation_space.low, [0,0]])
+    high = np.concatenate([env.observation_space.high, [1,1]])
+    t = env.observation_space.dtype
+    inputObsSpace = Box(low, high, dtype = t)
 
     print((env.observation_space))
+    print("input obs space: ", inputObsSpace)
 
-    Q_1 = QNetwork(action_dim=21, state_dim=env.observation_space.shape[0], hidden_dim=hidden_dim).to(device)
-    Q_2 = QNetwork(action_dim=21, state_dim=env.observation_space.shape[0], hidden_dim=hidden_dim).to(device)
+    Q_1 = QNetwork(action_dim=21, state_dim=inputObsSpace.shape[0], hidden_dim=hidden_dim).to(device)
+    Q_2 = QNetwork(action_dim=21, state_dim=inputObsSpace.shape[0], hidden_dim=hidden_dim).to(device)
     # transfer parameters from Q_1 to Q_2
     update_parameters(Q_1, Q_2)
 
@@ -277,6 +282,8 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
 
     achievedgoal = [1,1]
     desiredgoal = [0, 0]        ## desired goal is [0,0], but reward 1 if within tolerance of goal.
+
+    mastereps, mastersocs, masterconsums, masterrewards = [], [], [], []
 
 
     for episode in range(num_episodes):
@@ -330,6 +337,11 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
         rewards.append(reward)
         totalcosts.append(info["total_cost"] / 1000)
 
+        mastereps.append(episode)
+        masterconsums.append(info["my_pv_consumption"] / info["max_pv_consumption"])
+        mastersocs.append(info["battery_cont"])
+        masterrewards.append(reward)
+
         if episode % measure_step == 0:
             if countsampleepisodes < numsampleepisodes:
                 sampleepisodes.append((eptimes,epindices,eppvs,eploads,epsocs,epcosts,epactions))
@@ -342,10 +354,11 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
                 dataslice["rewards"] = rewards
                 dataslice["costs"] = totalcosts
                 dataslices.append(dataslice)
-                pv_consums, maxpvs, socs, rewards, dataslice = [], [], [], [], {}
+                pv_consums, maxpvs, socs, rewards, dataslice , totalcosts = [], [], [], [], {}, []
 
         if episode >= min_episodes and episode % update_step == 0:
-            train(batch_size, Q_1, Q_2, optimizer, memory, gamma) # train on a batch of memories
+            for i in range(update_step):
+                train(batch_size, Q_1, Q_2, optimizer, memory, gamma) # train on a batch of memories
             # transfer new parameter from Q_1 to Q_2
             update_parameters(Q_1, Q_2)
 
@@ -356,19 +369,21 @@ def main(gamma=0.99, lr=1e-3, min_episodes=20, eps=1, eps_decay=0.995, eps_min=0
 
     
     if saveload == 'default':
-        output = 'output/{}-rundef'.format(env_name)
+        output = 'output/masterhind/{}'.format(env_name)
     else: 
-        output = 'output/{}-{}'.format(env_name,saveload)
-    namecfg = (output, batch_size, lr, seed)
-    path = '{}/bs{}lr{}seed{}'.format(*namecfg)
+        output = 'output/masterhind/{}'.format(saveload)
+    namecfg = (output, lr, update_step)
+    path = '{}/lr{}update{}'.format(*namecfg)
     plotsampleepisodeslong(sampleepisodes, path, loadscaling)
-    plotperformance(performance, dataslices, namecfg, '{}validate_slices_inside'.format(path), interval=measure_step)
+    plotperformance(performance, dataslices, namecfg, path, interval=measure_step)
 
-    return Q_1, performance
+    masterData = {'episodes': mastereps, 'pvconsums': masterconsums, 'socs': mastersocs, 'rewards': masterrewards}
+    return masterData, Q_1, performance
+
 
 
 def plotperformance(performance, dataslices, namecfg, fn, interval=None):
-    output, bsize, epsilon, seed = namecfg    
+    output, lr, update_step = namecfg    
 
     print(performance)
     #yrew = np.mean(testrewards, axis=0)
@@ -403,8 +418,8 @@ def plotperformance(performance, dataslices, namecfg, fn, interval=None):
     fig, ax = plt.subplots(1, 1, figsize=(6, 5))
     plt.xlabel('Timestep')
     plt.ylabel('Average Reward')
-    plt.title('epsilon: {}, batch size: {}, seed: {}'.format(epsilon, bsize, seed))
-    ax.errorbar(x, yrew, fmt='-ko')
+    plt.title('lr: {}, update step: {}'.format(lr, update_step))
+  #  ax.errorbar(x, yrew, fmt='-ko')
 
 
     ax.errorbar(xless, yrewards, fmt='-ro')
@@ -413,7 +428,7 @@ def plotperformance(performance, dataslices, namecfg, fn, interval=None):
     ax.errorbar(xless, yconsums, fmt='-co')
     ax.errorbar(xless, ymaxpvs,  fmt='c.')
         
-    ax.legend(['test av reward','interval av reward','interval av total costs', 'interval av SoCs','interval av pv consumption','interval av max pv consum'])
+    ax.legend(['interval av reward','interval av total costs', 'interval av SoCs','interval av pv consumption','interval av max pv consum'], loc='lower right')
 
 #    ax.plot(x, ymaxpvs[None, :])
     plt.savefig(fn+'.png')
